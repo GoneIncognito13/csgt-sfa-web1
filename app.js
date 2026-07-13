@@ -401,12 +401,18 @@ function renderCalls() {
             html += '<div class="selfie-grid">';
             html += '<div class="selfie-col"><strong>First Call</strong><br>';
             const fcSrc = (fc && (fc.SelfieUrl || fc.SelfieBase64 || ''));
-            if (fcSrc) html += `<img src="${fcSrc}" class="selfie-img" onclick="showImage(this.src)"><br><small>${fc.CaptureTime || ''}</small>`;
-            else html += '<span class="call-status"><span class="missed">No Selfie</span></span>';
+            if (fcSrc) {
+                html += `<div style="background:#eee;min-height:100px;border-radius:6px;text-align:center;padding:4px">`;
+                html += `<img src="${fcSrc}" style="max-width:100%;height:120px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="showImage(this.src)" onerror="this.parentElement.innerHTML='<span style=color:red>Failed to load</span>'">`;
+                html += `</div><small>${fc.CaptureTime || ''}</small>`;
+            } else html += '<span class="call-status"><span class="missed">No Selfie</span></span>';
             html += '</div><div class="selfie-col"><strong>Last Call</strong><br>';
             const lcSrc = (lc && (lc.SelfieUrl || lc.SelfieBase64 || ''));
-            if (lcSrc) html += `<img src="${lcSrc}" class="selfie-img" onclick="showImage(this.src)"><br><small>${lc.CaptureTime || ''}</small>`;
-            else html += '<span class="call-status"><span class="missed">No Selfie</span></span>';
+            if (lcSrc) {
+                html += `<div style="background:#eee;min-height:100px;border-radius:6px;text-align:center;padding:4px">`;
+                html += `<img src="${lcSrc}" style="max-width:100%;height:120px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="showImage(this.src)" onerror="this.parentElement.innerHTML='<span style=color:red>Failed to load</span>'">`;
+                html += `</div><small>${lc.CaptureTime || ''}</small>`;
+            } else html += '<span class="call-status"><span class="missed">No Selfie</span></span>';
             html += '</div></div>';
         } else {
             html += '<div class="call-status">';
@@ -421,6 +427,13 @@ function renderCalls() {
 
 function showImage(src) {
     showModal(`<img src="${src.replace(/'/g, "\\'")}" class="enlarged-img" onerror="this.parentElement.innerHTML='<p style=color:red>Failed to load image</p>'"><div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
+}
+
+function cleanupOld() {
+    if (!confirm('Delete selfies older than 30 days?')) return;
+    fetch('/api/cleanup').then(r => r.json()).then(resp => {
+        alert(resp.success ? `Deleted ${resp.deleted} old selfies` : `Error: ${resp.error}`);
+    }).catch(() => alert('Cleanup failed'));
 }
 
 // ===================== INIT =====================

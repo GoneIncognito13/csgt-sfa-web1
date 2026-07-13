@@ -24,7 +24,10 @@
     <div id="adminPage" class="page" style="display:none">
         <div class="topbar">
             <h2>CSGT SFA - Admin Dashboard</h2>
-            <button onclick="logout()" class="logout-btn">Logout</button>
+            <div style="display:flex;gap:8px">
+                <button onclick="cleanupOld()" class="logout-btn" style="font-size:12px">Cleanup 30d+</button>
+                <button onclick="logout()" class="logout-btn">Logout</button>
+            </div>
         </div>
         <div class="tabs">
             <button class="tab active" onclick="switchTab('orders')">Orders</button>
