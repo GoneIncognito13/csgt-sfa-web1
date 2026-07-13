@@ -374,6 +374,7 @@ function loadCalls() {
 }
 
 function renderCalls() {
+    console.log('renderCalls called');
     const branch = document.getElementById('callsBranch').value;
     const date = document.getElementById('callsDate').value;
     const detailed = document.getElementById('callsDetailed').checked;
@@ -391,17 +392,20 @@ function renderCalls() {
         const dayCalls = calls.filter(c => (c.AgentID || '').toLowerCase() === (a.AgentID || '').toLowerCase() && c.Date === date);
         const fc = dayCalls.find(c => c.CallType === 'FirstCall');
         const lc = dayCalls.find(c => c.CallType === 'LastCall');
+        console.log(`Agent ${a.Name}: fc=`,fc,'lc=',lc);
 
         html += `<div class="card agent-report">
             <div class="report-header">${a.Name || a.AgentID}</div>`;
 
-        if (detailed) {
+            if (detailed) {
             html += '<div class="selfie-grid">';
             html += '<div class="selfie-col"><strong>First Call</strong><br>';
-            if (fc && fc.SelfieBase64) html += `<img src="${fc.SelfieBase64}" class="selfie-img" onclick="showImage('${fc.SelfieBase64}')"><br><small>${fc.CaptureTime || ''}</small>`;
+            const fcSrc = (fc && (fc.SelfieUrl || fc.SelfieBase64 || ''));
+            if (fcSrc) html += `<img src="${fcSrc}" class="selfie-img" onclick="showImage(this.src)"><br><small>${fc.CaptureTime || ''}</small>`;
             else html += '<span class="call-status"><span class="missed">No Selfie</span></span>';
             html += '</div><div class="selfie-col"><strong>Last Call</strong><br>';
-            if (lc && lc.SelfieBase64) html += `<img src="${lc.SelfieBase64}" class="selfie-img" onclick="showImage('${lc.SelfieBase64}')"><br><small>${lc.CaptureTime || ''}</small>`;
+            const lcSrc = (lc && (lc.SelfieUrl || lc.SelfieBase64 || ''));
+            if (lcSrc) html += `<img src="${lcSrc}" class="selfie-img" onclick="showImage(this.src)"><br><small>${lc.CaptureTime || ''}</small>`;
             else html += '<span class="call-status"><span class="missed">No Selfie</span></span>';
             html += '</div></div>';
         } else {
@@ -416,7 +420,7 @@ function renderCalls() {
 }
 
 function showImage(src) {
-    showModal(`<img src="${src}" class="enlarged-img"><div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
+    showModal(`<img src="${src.replace(/'/g, "\\'")}" class="enlarged-img" onerror="this.parentElement.innerHTML='<p style=color:red>Failed to load image</p>'"><div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
 }
 
 // ===================== INIT =====================
