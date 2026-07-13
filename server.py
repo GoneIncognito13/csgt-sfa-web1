@@ -1,7 +1,6 @@
-import urllib.request, urllib.parse
+import urllib.request, urllib.parse, urllib.error
 import json, os, uuid
 from flask import Flask, request, send_from_directory, Response
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__, static_folder='.')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,14 +38,36 @@ def api_proxy(path):
         if body:
             query += '&' + body
     url = f'{GAS_URL}?{query}'
+    
     try:
-        req = urllib.request.Request(url, method='GET')
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        gas_req = urllib.request.Request(url, method='GET')
+        gas_req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        gas_req.add_header('Accept', 'application/json')
+        
+        with urllib.request.urlopen(gas_req, timeout=120, context=ctx) as resp:
             data = resp.read()
             return Response(data, mimetype='application/json')
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8', errors='replace')[:500]
+        return json.dumps({
+            'success': False, 'error': f'HTTP {e.code} from GAS', 'detail': error_body
+        }), 502
+    except urllib.error.URLError as e:
+        return json.dumps({
+            'success': False, 'error': f'Connection error: {str(e.reason)}'
+        }), 502
     except Exception as e:
-        return json.dumps({'success': False, 'error': str(e)}), 500
+        return json.dumps({
+            'success': False, 'error': str(e)
+        }), 500
 
 if __name__ == '__main__':
-    print(f"Server starting on port {os.environ.get('PORT', 8080)}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    import sys
+    port = int(os.environ.get('PORT', sys.argv[1] if len(sys.argv) > 1 else 8080))
+    print(f"Server starting on port {port}")
+    app.run(host='0.0.0.0', port=port)
