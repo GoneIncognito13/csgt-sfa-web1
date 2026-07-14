@@ -79,8 +79,10 @@ def api_product_template():
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    return Response(output.read(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    headers={'Content-Disposition': 'attachment; filename=product_template.xlsx'})
+    resp = Response(output.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp.headers['Content-Disposition'] = 'attachment; filename=product_template.xlsx'
+    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    return resp
 
 @app.route('/api/import-products', methods=['POST'])
 def api_import_products():
