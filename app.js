@@ -91,6 +91,7 @@ function switchTab(name) {
     if (name === 'orders') loadOrders();
     if (name === 'products') loadProducts();
     if (name === 'customers') loadCustomers();
+    if (name === 'extruck') loadExtruck();
     if (name === 'branches') loadBranches();
     if (name === 'principals') loadPrincipals();
     if (name === 'agents') loadAgents();
@@ -188,6 +189,10 @@ function showOrderDetail(orderId) {
     if (o.ProofImage) {
         html += '<hr><p><strong>Proof of Payment:</strong></p>';
         html += `<img src="${o.ProofImage}" style="max-width:100%;max-height:300px;border-radius:6px">`;
+    }
+    const truckId = o.TruckID || '';
+    if (truckId && (o.Status || '').toLowerCase() !== 'sent') {
+        html += `<hr><button class="btn btn-success" onclick="processTruckOrder('${o.OrderID}','${truckId}','${(o.ItemsJson||'').replace(/'/g, "\\'")}')">✅ Process & Deduct Inventory</button>`;
     }
     html += '</div>';
     showModal(html);
@@ -551,6 +556,140 @@ function cancelCustomerImport() {
     }
 }
 
+// ===================== EXTRUCK =====================
+function loadExtruck() {
+    const el = document.getElementById('tab-extruck');
+    el.innerHTML = '<div class="spinner">Loading...</div>';
+    Promise.all([
+        api('list', { sheet: 'Extrucks' }),
+        api('list', { sheet: 'TruckInventory' }),
+        api('list', { sheet: 'TruckInventoryCounts' }),
+        api('list', { sheet: 'SalesReturns' }),
+        api('list', { sheet: 'TruckGPS' }),
+    ]).then(([tr, inv, cnt, ret, gps]) => {
+        const trucks = tr.data || [];
+        const inventory = inv.data || [];
+        const counts = cnt.data || [];
+        const returns = ret.data || [];
+        const gpsData = gps.data || [];
+        
+        let html = '<h3 style="margin-bottom:12px">Extruck Management</h3>';
+        
+        // Summary cards
+        html += '<div class="summary">';
+        html += `<div class="summary-card"><div class="num">${trucks.length}</div><div class="label">Trucks</div></div>`;
+        html += `<div class="summary-card"><div class="num">${returns.filter(r => r.Status === 'Pending').length}</div><div class="label">Pending Returns</div></div>`;
+        html += `<div class="summary-card"><div class="num">${gpsData.length}</div><div class="label">GPS Pings</div></div>`;
+        html += '</div>';
+        
+        // Truck list
+        html += '<table><tr><th>TruckID</th><th>Name</th><th>AgentID</th><th>Branch</th><th>Status</th><th>Actions</th></tr>';
+        trucks.forEach(t => {
+            const tid = t.TruckID || '';
+            const agentInv = inventory.filter(i => i.TruckID === tid);
+            const totalInv = agentInv.reduce((s, i) => s + (parseInt(i.Quantity) || 0), 0);
+            html += `<tr>
+                <td>${tid}</td><td>${t.TruckName || ''}</td><td>${t.AgentID || ''}</td>
+                <td>${t.Branch || ''}</td>
+                <td><span class="badge ${(t.Status||'Active') === 'Active' ? 'badge-active' : 'badge-inactive'}">${t.Status || 'Active'}</span></td>
+                <td class="btn-group">
+                    <button class="btn btn-sm btn-primary" onclick="showTruckDetail('${tid}')">Detail</button>
+                    <button class="btn btn-sm btn-success" onclick="showAssignTruck()">+ Assign</button>
+                </td>
+            </tr>`;
+        });
+        html += '</table>';
+        
+        // Inventory Count History
+        if (counts.length) {
+            html += '<h4 style="margin-top:20px;margin-bottom:8px">Recent Inventory Counts</h4>';
+            html += '<table><tr><th>Date</th><th>Truck</th><th>Product</th><th>Counted</th></tr>';
+            counts.slice(-10).reverse().forEach(c => {
+                html += `<tr><td>${c.Date || ''}</td><td>${c.TruckID || ''}</td><td>${c.ProductName || ''}</td><td>${c.QuantityCounted || ''}</td></tr>`;
+            });
+            html += '</table>';
+        }
+        
+        // Sales Returns
+        if (returns.length) {
+            html += '<h4 style="margin-top:20px;margin-bottom:8px">Sales Returns</h4>';
+            html += '<table><tr><th>Date</th><th>Truck</th><th>OrderID</th><th>Product</th><th>Qty</th><th>Reason</th><th>Status</th></tr>';
+            returns.slice(-10).reverse().forEach(r => {
+                html += `<tr><td>${r.Date || ''}</td><td>${r.TruckID || ''}</td><td>${r.OrderID || ''}</td>
+                    <td>${r.ProductName || ''}</td><td>${r.Quantity || ''}</td><td>${r.Reason || ''}</td>
+                    <td><span class="badge ${r.Status === 'Approved' ? 'badge-active' : 'badge-inactive'}">${r.Status || 'Pending'}</span></td></tr>`;
+            });
+            html += '</table>';
+        }
+        
+        // GPS Data
+        if (gpsData.length) {
+            html += '<h4 style="margin-top:20px;margin-bottom:8px">Latest GPS Locations</h4>';
+            html += '<table><tr><th>Truck</th><th>Agent</th><th>Latitude</th><th>Longitude</th><th>Timestamp</th></tr>';
+            gpsData.slice(-10).reverse().forEach(g => {
+                html += `<tr><td>${g.TruckID || ''}</td><td>${g.AgentID || ''}</td><td>${g.Latitude || ''}</td><td>${g.Longitude || ''}</td><td>${g.Timestamp || ''}</td></tr>`;
+            });
+            html += '</table>';
+        }
+        
+        el.innerHTML = html;
+    }).catch(() => el.innerHTML = '<div class="spinner" style="color:#E84C4C">Failed</div>');
+}
+
+function showTruckDetail(truckId) {
+    Promise.all([api('list', { sheet: 'TruckInventory' }), api('list', { sheet: 'TruckInventoryCounts' }), api('list', { sheet: 'SalesReturns' })]).then(([inv, cnt, ret]) => {
+        const truckInv = (inv.data || []).filter(i => i.TruckID === truckId);
+        const truckCnt = (cnt.data || []).filter(c => c.TruckID === truckId);
+        const truckRet = (ret.data || []).filter(r => r.TruckID === truckId);
+        let html = `<h3>Truck: ${truckId}</h3>`;
+        
+        html += '<p><strong>Current Inventory</strong></p><table><tr><th>Product</th><th>Qty</th></tr>';
+        if (!truckInv.length) html += '<tr><td colspan="2">No inventory</td></tr>';
+        else truckInv.forEach(i => html += `<tr><td>${i.ProductName || ''}</td><td>${i.Quantity || '0'}</td></tr>`);
+        html += '</table>';
+        
+        if (truckCnt.length) {
+            html += '<p style="margin-top:12px"><strong>Count History</strong></p><table><tr><th>Date</th><th>Product</th><th>Counted</th></tr>';
+            truckCnt.slice(-10).reverse().forEach(c => html += `<tr><td>${c.Date || ''}</td><td>${c.ProductName || ''}</td><td>${c.QuantityCounted || ''}</td></tr>`);
+            html += '</table>';
+        }
+        
+        showModal(html + '<div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>');
+    });
+}
+
+function showAssignTruck() {
+    Promise.all([api('list', { sheet: 'Branches' }), api('list', { sheet: 'Agents' })]).then(([br, ag]) => {
+        showModal(`
+            <h3>Assign Truck to Agent</h3>
+            <input type="text" id="truckId" placeholder="Truck ID">
+            <input type="text" id="truckName" placeholder="Truck Name">
+            <select id="truckBranch"><option value="">Select Branch</option>
+                ${(br.data||[]).map(b => `<option value="${b.BranchName||b.Name}">${b.BranchName||b.Name}</option>`).join('')}
+            </select>
+            <select id="truckAgent"><option value="">Select Agent</option>
+                ${(ag.data||[]).map(a => `<option value="${a.AgentID}">${a.Name} (${a.AgentID})</option>`).join('')}
+            </select>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-success" onclick="assignTruck()">Assign</button>
+            </div>
+        `);
+    });
+}
+
+function assignTruck() {
+    const tid = document.getElementById('truckId').value.trim();
+    const tn = document.getElementById('truckName').value.trim();
+    const tb = document.getElementById('truckBranch').value;
+    const ta = document.getElementById('truckAgent').value;
+    if (!tid || !tn || !tb || !ta) { alert('All fields required'); return; }
+    api('create', { sheet: 'Extrucks', TruckID: tid, TruckName: tn, AgentID: ta, Branch: tb, Status: 'Active' }).then(r => {
+        if (r.success) { closeModal(); loadExtruck(); }
+        else alert(r.error || 'Failed');
+    });
+}
+
 // ===================== BRANCHES =====================
 function loadBranches() {
     const el = document.getElementById('tab-branches');
@@ -831,6 +970,18 @@ function cleanupOld() {
     fetch('/api/cleanup').then(r => r.json()).then(resp => {
         alert(resp.success ? `Deleted ${resp.deleted} old selfies` : `Error: ${resp.error}`);
     }).catch(() => alert('Cleanup failed'));
+}
+
+function processTruckOrder(orderId, truckId, itemsJson) {
+    if (!confirm(`Process order ${orderId} and deduct truck inventory?`)) return;
+    fetch('/api/process-order', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({orderId, truckId, itemsJson})
+    }).then(r => r.json()).then(resp => {
+        if (resp.success) { alert(resp.message); closeModal(); loadOrders(); }
+        else alert('Error: ' + (resp.error || 'Failed'));
+    }).catch(() => alert('Failed to process'));
 }
 
 // ===================== INIT =====================

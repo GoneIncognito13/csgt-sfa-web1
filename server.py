@@ -229,6 +229,37 @@ def api_import_cancel(tid):
     if t: t['cancelled'] = True
     return json.dumps({'success': True})
 
+@app.route('/api/process-order', methods=['POST'])
+def api_process_order():
+    data = request.get_json(force=True) if request.is_json else request.form
+    order_id = data.get('orderId', '')
+    truck_id = data.get('truckId', '')
+    items_json = data.get('itemsJson', '[]')
+    
+    if not order_id: return json.dumps({'success': False, 'error': 'No orderId'}), 400
+    
+    # Mark order as Sent
+    try:
+        gas_request({'key': API_KEY, 'action': 'updateOrderStatus', 'orderId': order_id, 'status': 'Sent'})
+    except Exception as e:
+        return json.dumps({'success': False, 'error': f'Status update failed: {str(e)}'}), 500
+    
+    # Deduct truck inventory
+    if truck_id:
+        try:
+            items = json.loads(items_json) if isinstance(items_json, str) else items_json
+            for item in items:
+                pname = item.get('productName') or item.get('product_name', '')
+                qty = item.get('qty') or item.get('quantity', 0)
+                if pname and qty:
+                    try:
+                        gas_request({'key': API_KEY, 'action': 'create', 'sheet': 'TruckInventory',
+                            'TruckID': truck_id, 'ProductName': pname, 'Quantity': f'-{int(qty)}'})
+                    except: pass
+        except: pass
+    
+    return json.dumps({'success': True, 'message': f'Order {order_id} processed'})
+
 @app.route('/api/cleanup')
 def api_cleanup():
     count = cleanup_old_selfies()
