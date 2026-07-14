@@ -397,20 +397,45 @@ function setGrid(n) {
 }
 
 // ===================== CUSTOMERS =====================
+let customersBranchFilter = '';
+
 function loadCustomers() {
     const el = document.getElementById('tab-customers');
     el.innerHTML = '<div class="spinner">Loading...</div>';
-    api('list', { sheet: 'Customers' }).then(r => {
-        const data = r.data || [];
-        let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    Promise.all([api('list', { sheet: 'Customers' }), api('list', { sheet: 'Agents' }), api('list', { sheet: 'Branches' })]).then(([cr, ar, br]) => {
+        const customers = cr.data || [];
+        const agents = ar.data || [];
+        const branches = br.data || [];
+        
+        // Build agent-to-branch map
+        const agentBranchMap = {};
+        agents.forEach(a => { const aid = a.AgentID || ''; if (aid) agentBranchMap[aid] = (a.Branch || '').toLowerCase(); });
+        
+        // Filter customers by branch
+        const filtered = customers.filter(c => {
+            if (!customersBranchFilter) return true;
+            const agentBranch = agentBranchMap[c.AgentID || ''] || '';
+            return agentBranch === customersBranchFilter.toLowerCase();
+        });
+        
+        let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <h3>Customers</h3>
             <button class="btn btn-primary" onclick="showCustomerImport()">Import from Excel</button>
         </div>`;
-        if (!data.length) {
+        
+        html += `<div class="filters" style="margin-bottom:12px">
+            <select id="customerBranchFilter" onchange="customersBranchFilter=this.value;loadCustomers()" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+                <option value="">All Branches</option>
+                ${branches.map(b => `<option value="${b.BranchName || b.Name || ''}" ${(b.BranchName||b.Name) === customersBranchFilter ? 'selected' : ''}>${b.BranchName || b.Name}</option>`).join('')}
+            </select>
+            <span style="font-size:13px;color:#888">${filtered.length} customer(s)</span>
+        </div>`;
+        
+        if (!filtered.length) {
             html += '<div class="card" style="text-align:center;color:#888;padding:40px">No customers found.</div>';
         } else {
             html += '<table><tr><th>CustomerID</th><th>Name</th><th>Address</th><th>Phone</th><th>AgentID</th><th>Actions</th></tr>';
-            data.forEach(c => {
+            filtered.forEach(c => {
                 const agentId = c.AgentID || '';
                 const safeName = (c.Name || c.CustomerName || '').replace(/'/g, "\\'");
                 html += `<tr>
