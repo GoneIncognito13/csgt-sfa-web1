@@ -328,57 +328,55 @@ function showImportDialog() {
     `);
 }
 
+let importTaskId = null;
+let importPoll = null;
+
 function importExcel() {
     const fileInput = document.getElementById('excelFile');
     if (!fileInput.files.length) { alert('Select a file'); return; }
     const progress = document.getElementById('importProgress');
-    progress.textContent = 'Uploading...';
+    progress.innerHTML = 'Uploading...';
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
     
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-    
-    fetch('/api/import-stream', { method: 'POST', body: formData })
-        .then(response => {
-            if (!response.ok) {
-                response.text().then(t => { try { let j = JSON.parse(t); progress.innerHTML = '<span style="color:#E84C4C">' + (j.error || 'Failed') + '</span>'; } catch(e) { progress.innerHTML = '<span style="color:#E84C4C">Upload failed</span>'; }});
-                return;
-            }
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
+    fetch('/api/import-start', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(resp => {
+            if (!resp.success) { progress.innerHTML = '<span style="color:#E84C4C">' + (resp.error || 'Failed') + '</span>'; return; }
+            importTaskId = resp.task_id;
+            progress.innerHTML = `0 / ${resp.total} products <button class="btn btn-sm btn-danger" onclick="cancelImport()" style="margin-left:8px">Cancel</button>`;
             
-            function readChunk() {
-                reader.read().then(({ done, value }) => {
-                    if (done) return;
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || '';
-                    
-                    for (const line of lines) {
-                        if (!line.startsWith('data: ')) continue;
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            if (data.type === 'start') {
-                                progress.innerHTML = `0 / ${data.total} products`;
-                            } else if (data.type === 'progress') {
-                                progress.innerHTML = `${data.imported} / ${data.total} products`;
-                            } else if (data.type === 'done') {
-                                progress.innerHTML = `<span style="color:#2ECC71">✅ Imported ${data.imported} / ${data.total} products${data.errors.length ? '<br>⚠️ Errors: ' + data.errors.join('<br>') : ''}</span>`;
-                                setTimeout(() => { closeModal(); loadProducts(); }, 1500);
-                                return;
-                            } else if (data.type === 'cancelled') {
-                                progress.innerHTML = `<span style="color:#F39C12">⚠️ Stopped (page closed). Imported ${data.imported} / ${data.total}</span>`;
-                                return;
-                            }
-                        } catch(e) {}
-                    }
-                    readChunk();
-                });
-            }
-            readChunk();
+            importPoll = setInterval(() => {
+                fetch('/api/import-status/' + importTaskId)
+                    .then(r => r.json())
+                    .then(s => {
+                        if (!s.success) { clearInterval(importPoll); return; }
+                        progress.innerHTML = `${s.imported} / ${s.total} products <button class="btn btn-sm btn-danger" onclick="cancelImport()" style="margin-left:8px">Cancel</button>`;
+                        if (s.done) {
+                            clearInterval(importPoll);
+                            progress.innerHTML = `<span style="color:#2ECC71">✅ Imported ${s.imported} / ${s.total} products${s.errors && s.errors.length ? '<br>⚠️ Errors: ' + s.errors.join('<br>') : ''}</span>`;
+                            setTimeout(() => { closeModal(); loadProducts(); }, 1500);
+                        }
+                    });
+            }, 800);
         })
-        .catch(() => progress.innerHTML = '<span style="color:#E84C4C">Connection failed</span>');
+        .catch(() => progress.innerHTML = '<span style="color:#E84C4C">Upload failed</span>');
 }
+
+function cancelImport() {
+    if (importTaskId) {
+        fetch('/api/import-cancel/' + importTaskId);
+        clearInterval(importPoll);
+        document.getElementById('importProgress').innerHTML = '<span style="color:#F39C12">⏹️ Cancelling...</span>';
+    }
+}
+
+window.addEventListener('beforeunload', function() {
+    if (importTaskId) {
+        navigator.sendBeacon('/api/import-cancel/' + importTaskId);
+        clearInterval(importPoll);
+    }
+});
 
 function setGrid(n) {
     productsGrid = n;

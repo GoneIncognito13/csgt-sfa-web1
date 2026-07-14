@@ -87,8 +87,8 @@ def api_product_template():
     except Exception as e:
         return json.dumps({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/import-stream', methods=['POST'])
-def api_import_stream():
+@app.route('/api/import-start', methods=['POST'])
+def api_import_start():
     if 'file' not in request.files:
         return json.dumps({'success': False, 'error': 'No file'}), 400
     f = request.files['file']
@@ -97,56 +97,50 @@ def api_import_stream():
         wb = openpyxl.load_workbook(io.BytesIO(f.read()))
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            return json.dumps({'success': False, 'error': 'Empty file'}), 400
+        if not rows: return json.dumps({'success': False, 'error': 'Empty file'}), 400
         headers = [str(h).strip().lower() if h else '' for h in rows[0]]
         for r in ['name', 'price', 'principal', 'productid']:
-            if r not in headers:
-                return json.dumps({'success': False, 'error': f'Missing column: {r}'}), 400
-        
-        name_idx = headers.index('name')
-        price_idx = headers.index('price')
-        principal_idx = headers.index('principal')
-        prodid_idx = headers.index('productid')
-        
+            if r not in headers: return json.dumps({'success': False, 'error': f'Missing column: {r}'}), 400
+        ni = headers.index('name'); pi = headers.index('price'); pri = headers.index('principal'); pidi = headers.index('productid')
         opts_list = []
         for row in rows[1:]:
-            if not row or not row[name_idx]: continue
-            n = str(row[name_idx]).strip()
-            p = str(row[price_idx]).strip() if row[price_idx] is not None else '0'
-            pr = str(row[principal_idx]).strip() if row[principal_idx] else ''
-            pid = str(row[prodid_idx]).strip() if row[prodid_idx] else ''
+            if not row or not row[ni]: continue
+            n = str(row[ni]).strip(); p = str(row[pi]).strip() if row[pi] is not None else '0'
+            pr = str(row[pri]).strip() if row[pri] else ''; pid = str(row[pidi]).strip() if row[pidi] else ''
             if n and p and pr and pid:
-                opts_list.append({'key': API_KEY, 'action': 'create', 'sheet': 'Products',
-                                 'Name': n, 'Price': p, 'Principal': pr, 'ProductID': pid})
-        
-        total = len(opts_list)
-        imported = 0
-        errors = []
-        
-        def generate():
-            nonlocal imported, errors
-            yield f"data: {json.dumps({'type': 'start', 'total': total})}\n\n"
-            for i, opts in enumerate(opts_list):
-                if request.is_disconnected():
-                    yield f"data: {json.dumps({'type': 'cancelled', 'imported': imported, 'total': total, 'errors': errors})}\n\n"
-                    return
-                try:
-                    result = gas_request(opts)
-                    if result.get('success'):
-                        imported += 1
-                    else:
-                        errors.append(f"Row {i+2}: {result.get('error', 'API failed')}")
-                except Exception as e:
-                    errors.append(f"Row {i+2}: {str(e)[:80]}")
-                yield f"data: {json.dumps({'type': 'progress', 'imported': imported, 'total': total})}\n\n"
-                time.sleep(0.3)
-            yield f"data: {json.dumps({'type': 'done', 'imported': imported, 'total': total, 'errors': errors})}\n\n"
-        
-        return Response(generate(), mimetype='text/event-stream',
-                        headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'})
+                opts_list.append({'key': API_KEY, 'action': 'create', 'sheet': 'Products', 'Name': n, 'Price': p, 'Principal': pr, 'ProductID': pid})
+        tid = str(uuid.uuid4())
+        import_tasks[tid] = {'opts': opts_list, 'imported': 0, 'errors': [], 'done': False, 'cancelled': False}
+        threading.Thread(target=lambda: run_import(tid), daemon=True).start()
+        return json.dumps({'success': True, 'task_id': tid, 'total': len(opts_list)})
     except Exception as e:
         return json.dumps({'success': False, 'error': str(e)}), 500
+
+import_tasks = {}
+def run_import(tid):
+    task = import_tasks.get(tid, {})
+    opts_list = task.get('opts', [])
+    for i, opts in enumerate(opts_list):
+        if task.get('cancelled'): break
+        try:
+            r = gas_request(opts)
+            if r.get('success'): task['imported'] += 1
+            else: task['errors'].append(f"Row {i+2}: {r.get('error','fail')}")
+        except Exception as e:
+            task['errors'].append(f"Row {i+2}: {str(e)[:60]}")
+    task['done'] = True
+
+@app.route('/api/import-status/<tid>')
+def api_import_status(tid):
+    t = import_tasks.get(tid)
+    if not t: return json.dumps({'success': False, 'error': 'not found'}), 404
+    return json.dumps({'success': True, 'done': t['done'], 'imported': t['imported'], 'total': len(t.get('opts',[])), 'errors': t['errors']})
+
+@app.route('/api/import-cancel/<tid>')
+def api_import_cancel(tid):
+    t = import_tasks.get(tid)
+    if t: t['cancelled'] = True
+    return json.dumps({'success': True})
 
 @app.route('/api/cleanup')
 def api_cleanup():
