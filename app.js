@@ -337,30 +337,47 @@ function importExcel() {
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
     
-    progress.innerHTML = 'Uploading and processing...';
-    fetch('/api/import-products', { method: 'POST', body: formData })
-        .then(r => r.json())
-        .then(resp => {
-            if (resp.success) {
-                progress.innerHTML = `Processing ${resp.total} products...`;
-                const check = setInterval(() => {
-                    fetch('/api/import-status/' + resp.task_id)
-                        .then(r => r.json())
-                        .then(status => {
-                            if (status.done) {
-                                clearInterval(check);
-                                progress.innerHTML = `<span style="color:#2ECC71">Imported ${status.imported} products${status.errors.length ? '. Errors: ' + status.errors.join('<br>') : ''}</span>`;
-                                setTimeout(() => { closeModal(); loadProducts(); }, 2000);
-                            } else {
-                                progress.innerHTML = `Processing... ${status.imported} done so far`;
-                            }
-                        });
-                }, 2000);
-            } else {
-                progress.innerHTML = `<span style="color:#E84C4C">Error: ${resp.error}</span>`;
+    fetch('/api/import-stream', { method: 'POST', body: formData })
+        .then(response => {
+            if (!response.ok) {
+                response.text().then(t => { try { let j = JSON.parse(t); progress.innerHTML = '<span style="color:#E84C4C">' + (j.error || 'Failed') + '</span>'; } catch(e) { progress.innerHTML = '<span style="color:#E84C4C">Upload failed</span>'; }});
+                return;
             }
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            
+            function readChunk() {
+                reader.read().then(({ done, value }) => {
+                    if (done) return;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (data.type === 'start') {
+                                progress.innerHTML = `0 / ${data.total} products`;
+                            } else if (data.type === 'progress') {
+                                progress.innerHTML = `${data.imported} / ${data.total} products`;
+                            } else if (data.type === 'done') {
+                                progress.innerHTML = `<span style="color:#2ECC71">✅ Imported ${data.imported} / ${data.total} products${data.errors.length ? '<br>⚠️ Errors: ' + data.errors.join('<br>') : ''}</span>`;
+                                setTimeout(() => { closeModal(); loadProducts(); }, 1500);
+                                return;
+                            } else if (data.type === 'cancelled') {
+                                progress.innerHTML = `<span style="color:#F39C12">⚠️ Stopped (page closed). Imported ${data.imported} / ${data.total}</span>`;
+                                return;
+                            }
+                        } catch(e) {}
+                    }
+                    readChunk();
+                });
+            }
+            readChunk();
         })
-        .catch(() => progress.innerHTML = '<span style="color:#E84C4C">Upload failed</span>');
+        .catch(() => progress.innerHTML = '<span style="color:#E84C4C">Connection failed</span>');
 }
 
 function setGrid(n) {

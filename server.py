@@ -87,25 +87,8 @@ def api_product_template():
     except Exception as e:
         return json.dumps({'success': False, 'error': str(e)}), 500
 
-import_tasks = {}
-
-def process_import(task_id, opts_list):
-    imported = 0
-    errors = []
-    for i, opts in enumerate(opts_list):
-        try:
-            result = gas_request(opts)
-            if result.get('success'):
-                imported += 1
-            else:
-                errors.append(f"Row {i+2}: {result.get('error', 'API failed')}")
-        except Exception as e:
-            errors.append(f"Row {i+2}: {str(e)[:80]}")
-        time.sleep(0.5)
-    import_tasks[task_id] = {'done': True, 'imported': imported, 'errors': errors}
-
-@app.route('/api/import-products', methods=['POST'])
-def api_import_products():
+@app.route('/api/import-stream', methods=['POST'])
+def api_import_stream():
     if 'file' not in request.files:
         return json.dumps({'success': False, 'error': 'No file'}), 400
     f = request.files['file']
@@ -117,8 +100,7 @@ def api_import_products():
         if not rows:
             return json.dumps({'success': False, 'error': 'Empty file'}), 400
         headers = [str(h).strip().lower() if h else '' for h in rows[0]]
-        required = ['name', 'price', 'principal', 'productid']
-        for r in required:
+        for r in ['name', 'price', 'principal', 'productid']:
             if r not in headers:
                 return json.dumps({'success': False, 'error': f'Missing column: {r}'}), 400
         
@@ -128,30 +110,43 @@ def api_import_products():
         prodid_idx = headers.index('productid')
         
         opts_list = []
-        for i, row in enumerate(rows[1:], 2):
+        for row in rows[1:]:
             if not row or not row[name_idx]: continue
-            name = str(row[name_idx]).strip()
-            price = str(row[price_idx]).strip() if row[price_idx] is not None else '0'
-            principal = str(row[principal_idx]).strip() if row[principal_idx] else ''
-            prodid = str(row[prodid_idx]).strip() if row[prodid_idx] else ''
-            if not name or not price or not principal or not prodid: continue
-            opts_list.append({'key': API_KEY, 'action': 'create', 'sheet': 'Products',
-                             'Name': name, 'Price': price, 'Principal': principal, 'ProductID': prodid})
+            n = str(row[name_idx]).strip()
+            p = str(row[price_idx]).strip() if row[price_idx] is not None else '0'
+            pr = str(row[principal_idx]).strip() if row[principal_idx] else ''
+            pid = str(row[prodid_idx]).strip() if row[prodid_idx] else ''
+            if n and p and pr and pid:
+                opts_list.append({'key': API_KEY, 'action': 'create', 'sheet': 'Products',
+                                 'Name': n, 'Price': p, 'Principal': pr, 'ProductID': pid})
         
-        task_id = str(uuid.uuid4())
-        import_tasks[task_id] = {'done': False, 'imported': 0, 'errors': []}
-        t = threading.Thread(target=process_import, args=(task_id, opts_list), daemon=True)
-        t.start()
-        return json.dumps({'success': True, 'task_id': task_id, 'total': len(opts_list)})
+        total = len(opts_list)
+        imported = 0
+        errors = []
+        
+        def generate():
+            nonlocal imported, errors
+            yield f"data: {json.dumps({'type': 'start', 'total': total})}\n\n"
+            for i, opts in enumerate(opts_list):
+                if request.is_disconnected():
+                    yield f"data: {json.dumps({'type': 'cancelled', 'imported': imported, 'total': total, 'errors': errors})}\n\n"
+                    return
+                try:
+                    result = gas_request(opts)
+                    if result.get('success'):
+                        imported += 1
+                    else:
+                        errors.append(f"Row {i+2}: {result.get('error', 'API failed')}")
+                except Exception as e:
+                    errors.append(f"Row {i+2}: {str(e)[:80]}")
+                yield f"data: {json.dumps({'type': 'progress', 'imported': imported, 'total': total})}\n\n"
+                time.sleep(0.3)
+            yield f"data: {json.dumps({'type': 'done', 'imported': imported, 'total': total, 'errors': errors})}\n\n"
+        
+        return Response(generate(), mimetype='text/event-stream',
+                        headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'})
     except Exception as e:
         return json.dumps({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/import-status/<task_id>')
-def api_import_status(task_id):
-    task = import_tasks.get(task_id)
-    if not task:
-        return json.dumps({'success': False, 'error': 'Task not found'}), 404
-    return json.dumps(task)
 
 @app.route('/api/cleanup')
 def api_cleanup():
