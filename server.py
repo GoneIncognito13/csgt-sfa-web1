@@ -139,6 +139,70 @@ def api_import_start():
     except Exception as e:
         return json.dumps({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/customer-template.xlsx')
+def api_customer_template():
+    try:
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active; ws.title = "Customers"
+        ws.append(["CustomerID", "Name", "Address", "Phone", "AgentID"])
+        ws.append(["CUST001", "Sample Customer", "123 Street", "09123456789", "AG001"])
+        for c in ['A','B','C','D','E']: ws.column_dimensions[c].width = 22
+        output = io.BytesIO(); wb.save(output); output.seek(0)
+        return Response(output.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={'Content-Disposition': 'inline; filename="customer_template.xlsx"'})
+    except Exception as e:
+        return json.dumps({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/import-customers-start', methods=['POST'])
+def api_import_customers_start():
+    if 'file' not in request.files: return json.dumps({'success': False, 'error': 'No file'}), 400
+    f = request.files['file']
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(f.read())); ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows: return json.dumps({'success': False, 'error': 'Empty file'}), 400
+        headers = [str(h).strip().lower() if h else '' for h in rows[0]]
+        for r in ['customerid', 'name', 'address', 'phone', 'agentid']:
+            if r not in headers: return json.dumps({'success': False, 'error': f'Missing column: {r}'}), 400
+        ci = headers.index('customerid'); ni = headers.index('name')
+        ai = headers.index('address'); phi = headers.index('phone'); agi = headers.index('agentid')
+        
+        file_ids = set()
+        opts_list = []
+        for row in rows[1:]:
+            if not row or not row[ni]: continue
+            cid = str(row[ci]).strip() if row[ci] else ''
+            n = str(row[ni]).strip(); a = str(row[ai]).strip() if row[ai] else ''
+            ph = str(row[phi]).strip() if row[phi] else ''; ag = str(row[agi]).strip() if row[agi] else ''
+            if cid and n and a and ph and ag:
+                file_ids.add(cid)
+                opts_list.append({'key': API_KEY, 'action': 'create', 'sheet': 'Customers',
+                    'CustomerID': cid, 'Name': n, 'Address': a, 'Phone': ph, 'AgentID': ag})
+        
+        try:
+            existing = gas_request({'key': API_KEY, 'action': 'list', 'sheet': 'Customers'})
+            existing_ids = set()
+            for c in existing.get('data', []):
+                pid = (c.get('CustomerID') or '').strip()
+                if pid: existing_ids.add(pid)
+            dups = file_ids & existing_ids
+            if dups:
+                dl = sorted(dups)
+                numbered = '\n'.join(f"{i+1}. {d}" for i, d in enumerate(dl))
+                return json.dumps({'success': False, 'duplicate': True,
+                    'error': f'Duplicate CustomerID(s) found:\n{numbered}\n\nRemove them from the file and try again.',
+                    'duplicates': dl}), 400
+        except: pass
+        
+        tid = str(uuid.uuid4())
+        import_tasks[tid] = {'opts': opts_list, 'imported': 0, 'errors': [], 'done': False, 'cancelled': False}
+        threading.Thread(target=lambda: run_import(tid), daemon=True).start()
+        return json.dumps({'success': True, 'task_id': tid, 'total': len(opts_list)})
+    except Exception as e:
+        return json.dumps({'success': False, 'error': str(e)}), 500
+
 import_tasks = {}
 def run_import(tid):
     task = import_tasks.get(tid, {})

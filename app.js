@@ -90,6 +90,7 @@ function switchTab(name) {
     document.getElementById(`tab-${name}`).classList.add('active');
     if (name === 'orders') loadOrders();
     if (name === 'products') loadProducts();
+    if (name === 'customers') loadCustomers();
     if (name === 'branches') loadBranches();
     if (name === 'principals') loadPrincipals();
     if (name === 'agents') loadAgents();
@@ -392,6 +393,125 @@ function setGrid(n) {
             const products = (pd.data || []).filter(p => p.Principal === selectedPrincipal);
             renderProductsGrid(selectedPrincipal, products);
         });
+    }
+}
+
+// ===================== CUSTOMERS =====================
+function loadCustomers() {
+    const el = document.getElementById('tab-customers');
+    el.innerHTML = '<div class="spinner">Loading...</div>';
+    api('list', { sheet: 'Customers' }).then(r => {
+        const data = r.data || [];
+        let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3>Customers</h3>
+            <button class="btn btn-primary" onclick="showCustomerImport()">Import from Excel</button>
+        </div>`;
+        if (!data.length) {
+            html += '<div class="card" style="text-align:center;color:#888;padding:40px">No customers found.</div>';
+        } else {
+            html += '<table><tr><th>CustomerID</th><th>Name</th><th>Address</th><th>Phone</th><th>AgentID</th><th>Actions</th></tr>';
+            data.forEach(c => {
+                const agentId = c.AgentID || '';
+                const safeName = (c.Name || c.CustomerName || '').replace(/'/g, "\\'");
+                html += `<tr>
+                    <td>${c.CustomerID || ''}</td><td>${c.Name || c.CustomerName || ''}</td>
+                    <td>${c.Address || ''}</td><td>${c.Phone || ''}</td>
+                    <td>${agentId}</td>
+                    <td><button class="btn btn-sm btn-primary" onclick="showRetag('${c.CustomerID || ''}','${safeName}','${agentId.replace(/'/g, "\\'")}')">Re-tag</button></td>
+                </tr>`;
+            });
+            html += '</table>';
+        }
+        el.innerHTML = html;
+    }).catch(() => el.innerHTML = '<div class="spinner" style="color:#E84C4C">Failed</div>');
+}
+
+function showRetag(customerId, name, currentAgentId) {
+    showModal(`
+        <h3>Re-tag Customer</h3>
+        <p style="margin-bottom:8px"><strong>Customer:</strong> ${name} (${customerId})</p>
+        <p style="margin-bottom:8px"><strong>Current AgentID:</strong> ${currentAgentId}</p>
+        <input type="text" id="newAgentId" value="${currentAgentId}" placeholder="New Agent ID" style="margin-top:8px">
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveRetag('${customerId}','${name.replace(/'/g, "\\'")}')">Save</button>
+        </div>
+    `);
+}
+
+function saveRetag(customerId, name) {
+    const newAgentId = document.getElementById('newAgentId').value.trim();
+    if (!newAgentId) { alert('Enter an Agent ID'); return; }
+    api('delete', { sheet: 'Customers', idColumn: 'CustomerID', idValue: customerId }).then(() => {
+        setTimeout(() => {
+            api('create', { sheet: 'Customers', CustomerID: customerId, Name: name, AgentID: newAgentId }).then(r => {
+                if (r.success) { closeModal(); loadCustomers(); }
+                else alert(r.error || 'Failed');
+            });
+        }, 1500);
+    });
+}
+
+function showCustomerImport() {
+    showModal(`
+        <h3>Import Customers from Excel</h3>
+        <p style="font-size:13px;color:#666;margin-bottom:12px">Upload an .xlsx file with columns: <strong>CustomerID</strong>, <strong>Name</strong>, <strong>Address</strong>, <strong>Phone</strong>, <strong>AgentID</strong> (all required)</p>
+        <p style="font-size:13px;margin-bottom:12px"><a href="/api/customer-template.xlsx" style="color:#1B3A5C;font-weight:600">📥 Download Template (.xlsx)</a></p>
+        <input type="file" id="customerExcelFile" accept=".xlsx" style="margin-bottom:12px">
+        <div id="customerImportProgress" style="font-size:13px;color:#888"></div>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="importCustomers()">Import</button>
+        </div>
+    `);
+}
+
+let customerImportTaskId = null;
+let customerImportPoll = null;
+
+function importCustomers() {
+    const fileInput = document.getElementById('customerExcelFile');
+    if (!fileInput.files.length) { alert('Select a file'); return; }
+    const progress = document.getElementById('customerImportProgress');
+    progress.innerHTML = 'Uploading...';
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    
+    fetch('/api/import-customers-start', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(resp => {
+            if (!resp.success) {
+                if (resp.duplicate) {
+                    progress.innerHTML = `<span style="color:#E84C4C">❌ ${resp.error.replace(/\n/g, '<br>')}</span>`;
+                } else {
+                    progress.innerHTML = '<span style="color:#E84C4C">' + (resp.error || 'Failed') + '</span>';
+                }
+                return;
+            }
+            customerImportTaskId = resp.task_id;
+            progress.innerHTML = `0 / ${resp.total} customers <button class="btn btn-sm btn-danger" onclick="cancelCustomerImport()" style="margin-left:8px">Cancel</button>`;
+            
+            customerImportPoll = setInterval(() => {
+                fetch('/api/import-status/' + customerImportTaskId)
+                    .then(r => r.json())
+                    .then(s => {
+                        progress.innerHTML = `${s.imported} / ${s.total} customers <button class="btn btn-sm btn-danger" onclick="cancelCustomerImport()" style="margin-left:8px">Cancel</button>`;
+                        if (s.done) {
+                            clearInterval(customerImportPoll);
+                            progress.innerHTML = `<span style="color:#2ECC71">✅ Imported ${s.imported} / ${s.total} customers${s.errors && s.errors.length ? '<br>⚠️ Errors: ' + s.errors.join('<br>') : ''}</span>`;
+                            setTimeout(() => { closeModal(); loadCustomers(); }, 1500);
+                        }
+                    });
+            }, 800);
+        })
+        .catch(() => progress.innerHTML = '<span style="color:#E84C4C">Upload failed</span>');
+}
+
+function cancelCustomerImport() {
+    if (customerImportTaskId) {
+        fetch('/api/import-cancel/' + customerImportTaskId);
+        clearInterval(customerImportPoll);
+        document.getElementById('customerImportProgress').innerHTML = '<span style="color:#F39C12">⏹️ Cancelling...</span>';
     }
 }
 
