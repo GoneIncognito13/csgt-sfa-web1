@@ -337,12 +337,25 @@ function importExcel() {
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
     
+    progress.innerHTML = 'Uploading and processing...';
     fetch('/api/import-products', { method: 'POST', body: formData })
         .then(r => r.json())
         .then(resp => {
             if (resp.success) {
-                progress.innerHTML = `<span style="color:#2ECC71">Imported ${resp.imported} products${resp.errors.length ? '. Errors: ' + resp.errors.join(', ') : ''}</span>`;
-                setTimeout(() => { closeModal(); loadProducts(); }, 1500);
+                progress.innerHTML = `Processing ${resp.total} products...`;
+                const check = setInterval(() => {
+                    fetch('/api/import-status/' + resp.task_id)
+                        .then(r => r.json())
+                        .then(status => {
+                            if (status.done) {
+                                clearInterval(check);
+                                progress.innerHTML = `<span style="color:#2ECC71">Imported ${status.imported} products${status.errors.length ? '. Errors: ' + status.errors.join('<br>') : ''}</span>`;
+                                setTimeout(() => { closeModal(); loadProducts(); }, 2000);
+                            } else {
+                                progress.innerHTML = `Processing... ${status.imported} done so far`;
+                            }
+                        });
+                }, 2000);
             } else {
                 progress.innerHTML = `<span style="color:#E84C4C">Error: ${resp.error}</span>`;
             }
