@@ -89,6 +89,7 @@ function switchTab(name) {
     document.querySelector(`.tab[onclick*="${name}"]`).classList.add('active');
     document.getElementById(`tab-${name}`).classList.add('active');
     if (name === 'orders') loadOrders();
+    if (name === 'products') loadProducts();
     if (name === 'branches') loadBranches();
     if (name === 'principals') loadPrincipals();
     if (name === 'agents') loadAgents();
@@ -189,6 +190,89 @@ function showOrderDetail(orderId) {
     }
     html += '</div>';
     showModal(html);
+}
+
+// ===================== PRODUCTS =====================
+let selectedPrincipal = null;
+let productsGrid = 3;
+
+function loadProducts() {
+    const el = document.getElementById('tab-products');
+    el.innerHTML = '<div class="spinner">Loading...</div>';
+    Promise.all([api('list', { sheet: 'Principals' }), api('list', { sheet: 'Products' })]).then(([pr, pd]) => {
+        const principals = pr.data || [];
+        const products = pd.data || [];
+        selectedPrincipal = null;
+        renderPrincipalsList(principals, products);
+    }).catch(() => el.innerHTML = '<div class="spinner" style="color:#E84C4C">Failed to load</div>');
+}
+
+function renderPrincipalsList(principals, products) {
+    let html = '<h3 style="margin-bottom:12px">Principals</h3>';
+    if (!principals.length) {
+        html += '<div class="card" style="text-align:center;color:#888;padding:40px">No principals found.</div>';
+        document.getElementById('tab-products').innerHTML = html;
+        return;
+    }
+    principals.forEach(p => {
+        const name = p.Name || '—';
+        const count = products.filter(pr => pr.Principal === name).length;
+        html += `<div class="card" style="cursor:pointer" onclick="showProducts('${name.replace(/'/g, "\\'")}')">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <h3>${name}</h3>
+                <span style="background:#1B3A5C;color:white;padding:4px 12px;border-radius:12px;font-size:13px">${count} products</span>
+            </div>
+        </div>`;
+    });
+    document.getElementById('tab-products').innerHTML = html;
+}
+
+function showProducts(principalName) {
+    selectedPrincipal = principalName;
+    Promise.all([api('list', { sheet: 'Principals' }), api('list', { sheet: 'Products' })]).then(([pr, pd]) => {
+        const products = (pd.data || []).filter(p => p.Principal === principalName);
+        renderProductsGrid(principalName, products);
+    });
+}
+
+function renderProductsGrid(principalName, products) {
+    const cols = productsGrid;
+    let html = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div style="display:flex;align-items:center;gap:8px">
+                <button onclick="loadProducts()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#1B3A5C">←</button>
+                <h3>${principalName}</h3>
+            </div>
+            <div style="display:flex;gap:4px">
+                ${[2,3,4,5,6].map(n => `<button class="btn btn-sm ${cols === n ? 'btn-primary' : ''}" onclick="setGrid(${n})">${n}x${n}</button>`).join('')}
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px">`;
+    
+    if (!products.length) {
+        html = `<div style="text-align:center;color:#888;padding:40px">No products under ${principalName}.</div>`;
+    } else {
+        products.forEach(p => {
+            const name = p.Name || '—';
+            const price = p.Price || '0';
+            html += `<div class="card" style="text-align:center;padding:12px;cursor:default">
+                <div style="font-size:${cols > 4 ? '12px' : '14px'};font-weight:500;margin-bottom:4px">${name}</div>
+                <div style="font-size:${cols > 4 ? '13px' : '16px'};color:#1B3A5C;font-weight:700">₱${parseFloat(price).toFixed(2)}</div>
+            </div>`;
+        });
+    }
+    html += '</div>';
+    document.getElementById('tab-products').innerHTML = html;
+}
+
+function setGrid(n) {
+    productsGrid = n;
+    if (selectedPrincipal) {
+        api('list', { sheet: 'Products' }).then(pd => {
+            const products = (pd.data || []).filter(p => p.Principal === selectedPrincipal);
+            renderProductsGrid(selectedPrincipal, products);
+        });
+    }
 }
 
 // ===================== BRANCHES =====================
