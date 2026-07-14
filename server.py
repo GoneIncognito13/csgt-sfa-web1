@@ -1,5 +1,5 @@
 import urllib.request, urllib.parse, urllib.error
-import json, os, uuid, threading, time, io
+import json, os, uuid, threading, time, io, ssl
 from datetime import datetime, timedelta
 from flask import Flask, request, send_from_directory, Response
 
@@ -112,24 +112,29 @@ def api_import_products():
         
         imported = 0
         errors = []
-        for row in rows[1:]:
+        for i, row in enumerate(rows[1:], 2):
             if not row or not row[name_idx]:
                 continue
             name = str(row[name_idx]).strip()
             price = str(row[price_idx]).strip() if row[price_idx] is not None else '0'
-            principal = str(row[principal_idx]).strip() if principal_idx >= 0 and row[principal_idx] else ''
-            prodid = str(row[prodid_idx]).strip() if prodid_idx >= 0 and row[prodid_idx] else ''
+            principal = str(row[principal_idx]).strip() if row[principal_idx] else ''
+            prodid = str(row[prodid_idx]).strip() if row[prodid_idx] else ''
+            
+            if not name or not price or not principal or not prodid:
+                errors.append(f"Row {i}: missing data")
+                continue
             
             opts = {'key': API_KEY, 'action': 'create', 'sheet': 'Products',
-                    'Name': name, 'Price': price}
-            if principal: opts['Principal'] = principal
-            if prodid: opts['ProductID'] = prodid
+                    'Name': name, 'Price': price, 'Principal': principal, 'ProductID': prodid}
             
             try:
-                gas_request(opts)
-                imported += 1
+                result = gas_request(opts)
+                if result.get('success'):
+                    imported += 1
+                else:
+                    errors.append(f"Row {i} '{name}': {result.get('error', 'API failed')}")
             except Exception as e:
-                errors.append(f"Row '{name}': {str(e)[:50]}")
+                errors.append(f"Row {i} '{name}': {str(e)[:80]}")
         
         return json.dumps({'success': True, 'imported': imported, 'errors': errors})
     except Exception as e:
