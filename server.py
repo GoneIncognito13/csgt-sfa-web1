@@ -124,9 +124,11 @@ def api_import_start():
             
             duplicates = file_pids & existing_pids
             if duplicates:
+                dup_list = sorted(duplicates)
+                numbered = '\n'.join(f"{i+1}. {d}" for i, d in enumerate(dup_list))
                 return json.dumps({'success': False, 'duplicate': True, 
-                    'error': f'Duplicate ProductID(s) found: {", ".join(sorted(duplicates))}. Please remove them from the file and try again.',
-                    'duplicates': sorted(list(duplicates))}), 400
+                    'error': f'Duplicate ProductID(s) found:\n{numbered}\n\nPlease remove them from the file and try again.',
+                    'duplicates': dup_list}), 400
         except Exception:
             pass  # If check fails, proceed anyway
         

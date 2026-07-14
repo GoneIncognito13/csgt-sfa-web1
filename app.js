@@ -344,7 +344,7 @@ function importExcel() {
         .then(resp => {
             if (!resp.success) {
                 if (resp.duplicate) {
-                    progress.innerHTML = `<span style="color:#E84C4C">❌ ${resp.error}</span>`;
+                    progress.innerHTML = `<span style="color:#E84C4C">❌ ${resp.error.replace(/\n/g, '<br>')}</span>`;
                 } else {
                     progress.innerHTML = '<span style="color:#E84C4C">' + (resp.error || 'Failed') + '</span>';
                 }
