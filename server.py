@@ -1,5 +1,5 @@
 import urllib.request, urllib.parse, urllib.error
-import json, os, uuid, threading, time
+import json, os, uuid, threading, time, io
 from datetime import datetime, timedelta
 from flask import Flask, request, send_from_directory, Response
 
@@ -65,6 +65,54 @@ def upload_image():
     f.save(os.path.join(UPLOAD_DIR, name))
     url = request.host_url.rstrip('/') + '/uploads/' + name
     return json.dumps({'success': True, 'url': url})
+
+@app.route('/api/import-products', methods=['POST'])
+def api_import_products():
+    if 'file' not in request.files:
+        return json.dumps({'success': False, 'error': 'No file'}), 400
+    f = request.files['file']
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()))
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return json.dumps({'success': False, 'error': 'Empty file'}), 400
+        headers = [str(h).strip().lower() if h else '' for h in rows[0]]
+        required = ['name', 'price', 'principal', 'productid']
+        for r in required:
+            if r not in headers:
+                return json.dumps({'success': False, 'error': f'Missing column: {r}'}), 400
+        
+        name_idx = headers.index('name')
+        price_idx = headers.index('price')
+        principal_idx = headers.index('principal')
+        prodid_idx = headers.index('productid')
+        
+        imported = 0
+        errors = []
+        for row in rows[1:]:
+            if not row or not row[name_idx]:
+                continue
+            name = str(row[name_idx]).strip()
+            price = str(row[price_idx]).strip() if row[price_idx] is not None else '0'
+            principal = str(row[principal_idx]).strip() if principal_idx >= 0 and row[principal_idx] else ''
+            prodid = str(row[prodid_idx]).strip() if prodid_idx >= 0 and row[prodid_idx] else ''
+            
+            opts = {'key': API_KEY, 'action': 'create', 'sheet': 'Products',
+                    'Name': name, 'Price': price}
+            if principal: opts['Principal'] = principal
+            if prodid: opts['ProductID'] = prodid
+            
+            try:
+                gas_request(opts)
+                imported += 1
+            except Exception as e:
+                errors.append(f"Row '{name}': {str(e)[:50]}")
+        
+        return json.dumps({'success': True, 'imported': imported, 'errors': errors})
+    except Exception as e:
+        return json.dumps({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/cleanup')
 def api_cleanup():

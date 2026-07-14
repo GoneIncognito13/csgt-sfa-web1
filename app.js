@@ -208,7 +208,10 @@ function loadProducts() {
 }
 
 function renderPrincipalsList(principals, products) {
-    let html = '<h3 style="margin-bottom:12px">Principals</h3>';
+    let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+    html += '<h3>Principals</h3>';
+    html += '<button class="btn btn-primary" onclick="showImportDialog()">Import from Excel</button>';
+    html += '</div>';
     if (!principals.length) {
         html += '<div class="card" style="text-align:center;color:#888;padding:40px">No principals found.</div>';
         document.getElementById('tab-products').innerHTML = html;
@@ -255,14 +258,95 @@ function renderProductsGrid(principalName, products) {
         products.forEach(p => {
             const name = p.Name || '—';
             const price = p.Price || '0';
-            html += `<div class="card" style="text-align:center;padding:12px;cursor:default">
-                <div style="font-size:${cols > 4 ? '12px' : '14px'};font-weight:500;margin-bottom:4px">${name}</div>
+            const prodId = p.ProductID || '';
+            const pName = p.Principal || '';
+            const safeName = name.replace(/'/g, "\\'");
+            html += `<div class="card" style="text-align:center;padding:12px;position:relative">
+                <div style="position:absolute;top:4px;right:4px;display:flex;gap:4px">
+                    <button class="btn btn-sm btn-primary" onclick="editProduct('${safeName}','${prodId}','${price}','${pName.replace(/'/g, "\\'")}')" style="font-size:10px;padding:2px 6px">Edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteProduct('${prodId}')" style="font-size:10px;padding:2px 6px">Del</button>
+                </div>
+                <div style="font-size:${cols > 4 ? '12px' : '14px'};font-weight:500;margin-bottom:4px;padding-top:8px">${name}</div>
                 <div style="font-size:${cols > 4 ? '13px' : '16px'};color:#1B3A5C;font-weight:700">₱${parseFloat(price).toFixed(2)}</div>
             </div>`;
         });
     }
     html += '</div>';
     document.getElementById('tab-products').innerHTML = html;
+}
+
+function editProduct(name, prodId, price, principal) {
+    showModal(`
+        <h3>Edit Product</h3>
+        <input type="text" id="editProdName" value="${name}" placeholder="Name">
+        <input type="text" id="editProdId" value="${prodId}" placeholder="ProductID">
+        <input type="text" id="editProdPrice" value="${price}" placeholder="Price">
+        <input type="text" id="editProdPrincipal" value="${principal}" placeholder="Principal">
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveProduct('${prodId}')">Save</button>
+        </div>
+    `);
+}
+
+function saveProduct(oldProdId) {
+    const name = document.getElementById('editProdName').value.trim();
+    const prodId = document.getElementById('editProdId').value.trim();
+    const price = document.getElementById('editProdPrice').value.trim();
+    const principal = document.getElementById('editProdPrincipal').value.trim();
+    if (!name || !prodId || !price || !principal) { alert('All fields required'); return; }
+    
+    api('delete', { sheet: 'Products', idColumn: 'ProductID', idValue: oldProdId }).then(() => {
+        setTimeout(() => {
+            api('create', { sheet: 'Products', ProductID: prodId, Name: name, Price: price, Principal: principal }).then(r => {
+                if (r.success) { closeModal(); showProducts(principal); }
+                else alert(r.error || 'Failed');
+            });
+        }, 1500);
+    });
+}
+
+function deleteProduct(prodId) {
+    if (!confirm('Delete this product?')) return;
+    api('delete', { sheet: 'Products', idColumn: 'ProductID', idValue: prodId }).then(r => {
+        if (r.success) { if (selectedPrincipal) showProducts(selectedPrincipal); else loadProducts(); }
+        else alert('Delete failed');
+    });
+}
+
+function showImportDialog() {
+    showModal(`
+        <h3>Import Products from Excel</h3>
+        <p style="font-size:13px;color:#666;margin-bottom:12px">Upload an .xlsx file with columns: <strong>Name</strong>, <strong>Price</strong>, <strong>Principal</strong>, <strong>ProductID</strong> (all required)</p>
+        <input type="file" id="excelFile" accept=".xlsx" style="margin-bottom:12px">
+        <div id="importProgress" style="font-size:13px;color:#888"></div>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="importExcel()">Import</button>
+        </div>
+    `);
+}
+
+function importExcel() {
+    const fileInput = document.getElementById('excelFile');
+    if (!fileInput.files.length) { alert('Select a file'); return; }
+    const progress = document.getElementById('importProgress');
+    progress.textContent = 'Uploading...';
+    
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    
+    fetch('/api/import-products', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(resp => {
+            if (resp.success) {
+                progress.innerHTML = `<span style="color:#2ECC71">Imported ${resp.imported} products${resp.errors.length ? '. Errors: ' + resp.errors.join(', ') : ''}</span>`;
+                setTimeout(() => { closeModal(); loadProducts(); }, 1500);
+            } else {
+                progress.innerHTML = `<span style="color:#E84C4C">Error: ${resp.error}</span>`;
+            }
+        })
+        .catch(() => progress.innerHTML = '<span style="color:#E84C4C">Upload failed</span>');
 }
 
 function setGrid(n) {
