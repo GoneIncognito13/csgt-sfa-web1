@@ -342,7 +342,14 @@ function importExcel() {
     fetch('/api/import-start', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(resp => {
-            if (!resp.success) { progress.innerHTML = '<span style="color:#E84C4C">' + (resp.error || 'Failed') + '</span>'; return; }
+            if (!resp.success) {
+                if (resp.duplicate) {
+                    progress.innerHTML = `<span style="color:#E84C4C">❌ ${resp.error}</span>`;
+                } else {
+                    progress.innerHTML = '<span style="color:#E84C4C">' + (resp.error || 'Failed') + '</span>';
+                }
+                return;
+            }
             importTaskId = resp.task_id;
             progress.innerHTML = `0 / ${resp.total} products <button class="btn btn-sm btn-danger" onclick="cancelImport()" style="margin-left:8px">Cancel</button>`;
             

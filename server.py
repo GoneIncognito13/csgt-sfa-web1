@@ -102,13 +102,34 @@ def api_import_start():
         for r in ['name', 'price', 'principal', 'productid']:
             if r not in headers: return json.dumps({'success': False, 'error': f'Missing column: {r}'}), 400
         ni = headers.index('name'); pi = headers.index('price'); pri = headers.index('principal'); pidi = headers.index('productid')
+        
+        # Extract ProductIDs from file
+        file_pids = set()
         opts_list = []
         for row in rows[1:]:
             if not row or not row[ni]: continue
             n = str(row[ni]).strip(); p = str(row[pi]).strip() if row[pi] is not None else '0'
             pr = str(row[pri]).strip() if row[pri] else ''; pid = str(row[pidi]).strip() if row[pidi] else ''
             if n and p and pr and pid:
+                file_pids.add(pid)
                 opts_list.append({'key': API_KEY, 'action': 'create', 'sheet': 'Products', 'Name': n, 'Price': p, 'Principal': pr, 'ProductID': pid})
+        
+        # Check for duplicates against existing database
+        try:
+            existing = gas_request({'key': API_KEY, 'action': 'list', 'sheet': 'Products'})
+            existing_pids = set()
+            for prod in existing.get('data', []):
+                pid = (prod.get('ProductID') or '').strip()
+                if pid: existing_pids.add(pid)
+            
+            duplicates = file_pids & existing_pids
+            if duplicates:
+                return json.dumps({'success': False, 'duplicate': True, 
+                    'error': f'Duplicate ProductID(s) found: {", ".join(sorted(duplicates))}. Please remove them from the file and try again.',
+                    'duplicates': sorted(list(duplicates))}), 400
+        except Exception:
+            pass  # If check fails, proceed anyway
+        
         tid = str(uuid.uuid4())
         import_tasks[tid] = {'opts': opts_list, 'imported': 0, 'errors': [], 'done': False, 'cancelled': False}
         threading.Thread(target=lambda: run_import(tid), daemon=True).start()
