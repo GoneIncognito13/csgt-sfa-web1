@@ -637,25 +637,155 @@ function loadExtruck() {
 }
 
 function showTruckDetail(truckId) {
-    Promise.all([api('list', { sheet: 'TruckInventory' }), api('list', { sheet: 'TruckInventoryCounts' }), api('list', { sheet: 'SalesReturns' })]).then(([inv, cnt, ret]) => {
+    Promise.all([api('list', { sheet: 'TruckInventory' }), api('list', { sheet: 'TruckInventoryCounts' }), api('list', { sheet: 'SalesReturns' }), api('list', { sheet: 'Products' })]).then(([inv, cnt, ret, pr]) => {
         const truckInv = (inv.data || []).filter(i => i.TruckID === truckId);
         const truckCnt = (cnt.data || []).filter(c => c.TruckID === truckId);
         const truckRet = (ret.data || []).filter(r => r.TruckID === truckId);
-        let html = `<h3>Truck: ${truckId}</h3>`;
+        const products = pr.data || [];
         
-        html += '<p><strong>Current Inventory</strong></p><table><tr><th>Product</th><th>Qty</th></tr>';
-        if (!truckInv.length) html += '<tr><td colspan="2">No inventory</td></tr>';
-        else truckInv.forEach(i => html += `<tr><td>${i.ProductName || ''}</td><td>${i.Quantity || '0'}</td></tr>`);
+        // Get principals for inventory products
+        const prodMap = {};
+        products.forEach(p => { prodMap[p.Name] = p.Principal || ''; });
+        
+        let html = `<h3>Truck: ${truckId}</h3>
+        <div style="margin-bottom:10px;display:flex;gap:8px">
+            <button class="btn btn-sm btn-success" onclick="showSpotCount('${truckId}')">📋 Spot Count</button>
+            <button class="btn btn-sm btn-primary" onclick="showLoadUnload('${truckId}')">📦 Load/Unload</button>
+            <button class="btn btn-sm btn-primary" onclick="showCountHistory('${truckId}')">📊 Count History</button>
+        </div>`;
+        
+        html += '<p><strong>Current Inventory</strong></p><table><tr><th>Product</th><th>Principal</th><th>Qty</th></tr>';
+        if (!truckInv.length) html += '<tr><td colspan="3">No inventory</td></tr>';
+        else truckInv.forEach(i => html += `<tr><td>${i.ProductName || ''}</td><td>${prodMap[i.ProductName] || '-'}</td><td>${i.Quantity || '0'}</td></tr>`);
         html += '</table>';
         
-        if (truckCnt.length) {
-            html += '<p style="margin-top:12px"><strong>Count History</strong></p><table><tr><th>Date</th><th>Product</th><th>Counted</th></tr>';
-            truckCnt.slice(-10).reverse().forEach(c => html += `<tr><td>${c.Date || ''}</td><td>${c.ProductName || ''}</td><td>${c.QuantityCounted || ''}</td></tr>`);
+        if (truckRet.length) {
+            html += '<p style="margin-top:12px"><strong>Returns</strong></p><table><tr><th>Date</th><th>Order</th><th>Reason</th><th>Status</th></tr>';
+            truckRet.slice(-5).reverse().forEach(r => html += `<tr><td>${r.Date || ''}</td><td>${r.OrderID || ''}</td><td>${r.Reason || ''}</td><td>${r.Status || ''}</td></tr>`);
             html += '</table>';
         }
         
         showModal(html + '<div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>');
     });
+}
+
+function showSpotCount(truckId) {
+    api('list', { sheet: 'TruckInventory' }).then(inv => {
+        const items = (inv.data || []).filter(i => i.TruckID === truckId);
+        let html = `<h3>Spot Count - ${truckId}</h3>
+        <p style="font-size:12px;color:#888;margin-bottom:8px">Enter actual count for each product</p>
+        <div id="spotCountForm">`;
+        
+        // Add principal filter
+        api('list', { sheet: 'Products' }).then(pr => {
+            const prodMap = {};
+            (pr.data || []).forEach(p => { prodMap[p.Name] = p.Principal || ''; });
+            
+            items.forEach(item => {
+                const pn = item.ProductName || '';
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px;margin:3px 0;background:rgba(0,0,0,.3);border-radius:5px">
+                    <div><strong>${pn}</strong><br><span style="font-size:10px;color:#888">System: ${item.Quantity || '0'} | ${prodMap[pn] || ''}</span></div>
+                    <input type="number" id="sc_${pn.replace(/\s/g,'_')}" placeholder="Actual" style="width:80px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:13px">
+                </div>`;
+            });
+            
+            html += `</div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-success" onclick="finishSpotCount('${truckId}')">✅ Finish Count</button>
+            </div>`;
+            
+            // Replace modal content
+            document.getElementById('modalContent').innerHTML = html;
+        });
+    });
+}
+
+function finishSpotCount(truckId) {
+    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const inputs = document.querySelectorAll('[id^="sc_"]');
+    let count = 0;
+    
+    inputs.forEach(input => {
+        const pn = input.id.replace('sc_', '').replace(/_/g, ' ');
+        const qty = input.value.trim();
+        if (qty) {
+            api('create', { sheet: 'TruckInventoryCounts', TruckID: truckId, Date: date, ProductName: pn, QuantityCounted: qty });
+            count++;
+        }
+    });
+    
+    if (count > 0) {
+        alert(`✅ ${count} items counted`);
+        closeModal();
+    } else {
+        alert('No counts entered');
+    }
+}
+
+function showLoadUnload(truckId) {
+    showModal(`
+        <h3>Load/Unload - ${truckId}</h3>
+        <select id="luType" style="width:100%;padding:8px;margin-bottom:8px;border:1px solid #ddd;border-radius:4px">
+            <option value="+">Load (add stock)</option>
+            <option value="-">Unload (remove stock)</option>
+        </select>
+        <input type="text" id="luProduct" placeholder="Product Name" style="width:100%;padding:8px;margin-bottom:8px;border:1px solid #ddd;border-radius:4px">
+        <input type="number" id="luQty" placeholder="Quantity" style="width:100%;padding:8px;margin-bottom:8px;border:1px solid #ddd;border-radius:4px">
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="doLoadUnload('${truckId}')">Save</button>
+        </div>
+    `);
+}
+
+function doLoadUnload(truckId) {
+    const type = document.getElementById('luType').value;
+    const pn = document.getElementById('luProduct').value.trim();
+    const qty = document.getElementById('luQty').value.trim();
+    if (!pn || !qty) { alert('Fill all fields'); return; }
+    api('create', { sheet: 'TruckInventory', TruckID: truckId, ProductName: pn, Quantity: type + qty }).then(r => {
+        if (r.success) { alert('Done'); closeModal(); }
+        else alert(r.error || 'Failed');
+    });
+}
+
+function showCountHistory(truckId) {
+    api('list', { sheet: 'TruckInventoryCounts' }).then(r => {
+        const counts = (r.data || []).filter(c => c.TruckID === truckId);
+        if (!counts.length) { alert('No count history'); closeModal(); return; }
+        const grouped = {};
+        counts.forEach(c => {
+            const d = c.Date || 'Unknown';
+            if (!grouped[d]) grouped[d] = [];
+            grouped[d].push(c);
+        });
+        let html = `<h3>Count History - ${truckId}</h3>`;
+        Object.keys(grouped).sort().reverse().slice(0, 10).forEach(date => {
+            html += `<div style="margin:6px 0;padding:8px;background:rgba(0,0,0,.2);border-radius:5px">
+                <strong>${date}</strong> (${grouped[date].length} items)
+                <button class="btn btn-sm btn-primary" style="margin-left:8px" onclick="showCountDetail('${truckId}','${date}')">View</button>
+                <button class="btn btn-sm" style="margin-left:4px" onclick="recountFromHistory('${truckId}','${date}')">Recount</button>
+            </div>`;
+        });
+        html += '<div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>';
+        showModal(html);
+    });
+}
+
+function showCountDetail(truckId, date) {
+    api('list', { sheet: 'TruckInventoryCounts' }).then(r => {
+        const items = (r.data || []).filter(c => c.TruckID === truckId && c.Date === date);
+        let html = `<h3>Count Detail - ${date}</h3><table><tr><th>Product</th><th>Counted</th></tr>`;
+        items.forEach(i => html += `<tr><td>${i.ProductName || ''}</td><td>${i.QuantityCounted || ''}</td></tr>`);
+        html += '</table><div class="modal-actions"><button class="btn btn-primary" onclick="showCountHistory(\''+truckId+'\')">Back</button><button class="btn" onclick="closeModal()">Close</button></div>';
+        showModal(html);
+    });
+}
+
+function recountFromHistory(truckId, date) {
+    if (!confirm(`Open spot count for ${truckId}?`)) return;
+    showSpotCount(truckId);
 }
 
 function showAssignTruck() {
