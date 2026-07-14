@@ -9,6 +9,53 @@ function api(action, extra = {}) {
     return qs(`${PROXY}?${params}`);
 }
 
+// ===================== REGISTER =====================
+function showRegister() {
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('registerPage').style.display = 'flex';
+    // Load branches for dropdown
+    api('list', { sheet: 'Branches' }).then(r => {
+        const sel = document.getElementById('regBranch');
+        sel.innerHTML = '<option value="">Select Branch</option>';
+        (r.data || []).forEach(b => {
+            const opt = document.createElement('option');
+            opt.value = b.BranchName || b.Name || '';
+            opt.textContent = b.BranchName || b.Name || '';
+            sel.appendChild(opt);
+        });
+    });
+}
+
+function backToLogin() {
+    document.getElementById('registerPage').style.display = 'none';
+    document.getElementById('loginPage').style.display = 'flex';
+}
+
+function registerAccount() {
+    const agentId = document.getElementById('regAgentId').value.trim();
+    const name = document.getElementById('regName').value.trim();
+    const branch = document.getElementById('regBranch').value;
+    const username = document.getElementById('regUsername').value.trim();
+    const password = document.getElementById('regPassword').value.trim();
+    const confirm = document.getElementById('regConfirm').value.trim();
+    const err = document.getElementById('regError');
+
+    if (!agentId || !name || !branch || !username || !password) {
+        err.textContent = 'Please fill in all fields'; return;
+    }
+    if (password !== confirm) { err.textContent = 'Passwords do not match'; return; }
+    err.textContent = '';
+
+    api('create', { sheet: 'Agents', AgentID: agentId, Name: name, Branch: branch, Username: username, Password: password }).then(r => {
+        if (r.success) {
+            alert('Registration successful! You can now log in.');
+            backToLogin();
+        } else {
+            err.textContent = r.error || 'Registration failed';
+        }
+    }).catch(() => err.textContent = 'Connection error');
+}
+
 // ===================== LOGIN =====================
 function adminLogin() {
     const username = document.getElementById('adminUser').value.trim();
