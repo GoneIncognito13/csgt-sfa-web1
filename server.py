@@ -68,19 +68,24 @@ def upload_image():
 
 @app.route('/api/product-template.xlsx')
 def api_product_template():
-    import openpyxl
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Products"
-    ws.append(["Name", "Price", "Principal", "ProductID"])
-    ws.append(["Sample Product", "99.99", "Principal Name", "PROD001"])
-    for col in range(1, 5):
-        ws.column_dimensions[chr(64+col)].width = 20
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return Response(output.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    headers={'Content-Disposition': 'inline; filename="product_template.xlsx"'})
+    try:
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Products"
+        ws.append(["Name", "Price", "Principal", "ProductID"])
+        ws.append(["Sample Product", "99.99", "Principal Name", "PROD001"])
+        for i, col in enumerate(['A','B','C','D'], 1):
+            ws.column_dimensions[col].width = 20
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return Response(output.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={'Content-Disposition': 'inline; filename="product_template.xlsx"'})
+    except ImportError:
+        return json.dumps({'success': False, 'error': 'openpyxl not installed on server. Run: pip install openpyxl'}), 500
+    except Exception as e:
+        return json.dumps({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/import-products', methods=['POST'])
 def api_import_products():
