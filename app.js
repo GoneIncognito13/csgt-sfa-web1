@@ -9,21 +9,10 @@ function api(action, extra = {}) {
     return qs(`${PROXY}?${params}`);
 }
 
-// ===================== REGISTER =====================
+// ===================== REGISTER ADMIN =====================
 function showRegister() {
     document.getElementById('loginPage').style.display = 'none';
     document.getElementById('registerPage').style.display = 'flex';
-    // Load branches for dropdown
-    api('list', { sheet: 'Branches' }).then(r => {
-        const sel = document.getElementById('regBranch');
-        sel.innerHTML = '<option value="">Select Branch</option>';
-        (r.data || []).forEach(b => {
-            const opt = document.createElement('option');
-            opt.value = b.BranchName || b.Name || '';
-            opt.textContent = b.BranchName || b.Name || '';
-            sel.appendChild(opt);
-        });
-    });
 }
 
 function backToLogin() {
@@ -31,24 +20,23 @@ function backToLogin() {
     document.getElementById('loginPage').style.display = 'flex';
 }
 
-function registerAccount() {
-    const agentId = document.getElementById('regAgentId').value.trim();
+function registerAdmin() {
+    const adminId = document.getElementById('regAdminId').value.trim();
     const name = document.getElementById('regName').value.trim();
-    const branch = document.getElementById('regBranch').value;
     const username = document.getElementById('regUsername').value.trim();
     const password = document.getElementById('regPassword').value.trim();
     const confirm = document.getElementById('regConfirm').value.trim();
     const err = document.getElementById('regError');
 
-    if (!agentId || !name || !branch || !username || !password) {
+    if (!adminId || !name || !username || !password) {
         err.textContent = 'Please fill in all fields'; return;
     }
     if (password !== confirm) { err.textContent = 'Passwords do not match'; return; }
     err.textContent = '';
 
-    api('create', { sheet: 'Agents', AgentID: agentId, Name: name, Branch: branch, Username: username, Password: password }).then(r => {
+    api('create', { sheet: 'Admins', AdminID: adminId, Name: name, Username: username, Password: password }).then(r => {
         if (r.success) {
-            alert('Registration successful! You can now log in.');
+            alert('Admin registered successfully! You can now log in.');
             backToLogin();
         } else {
             err.textContent = r.error || 'Registration failed';
@@ -64,8 +52,10 @@ function adminLogin() {
     if (!username || !password) { err.textContent = 'Please enter admin credentials'; return; }
     err.textContent = '';
 
-    api('adminLogin', { username, password }).then(resp => {
-        if (resp.success) {
+    api('list', { sheet: 'Admins' }).then(resp => {
+        const admins = resp.data || [];
+        const match = admins.find(a => a.Username === username && a.Password === password);
+        if (match) {
             const remember = document.getElementById('rememberAdmin').checked;
             if (remember) localStorage.setItem('adminSession', JSON.stringify({ username, password }));
             document.getElementById('loginPage').style.display = 'none';
@@ -73,7 +63,7 @@ function adminLogin() {
             document.getElementById('adminPage').style.flexDirection = 'column';
             loadOrders();
         } else {
-            err.textContent = resp.error || 'Invalid credentials';
+            err.textContent = 'Invalid credentials';
         }
     }).catch(() => err.textContent = 'Connection error');
 }
