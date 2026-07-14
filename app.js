@@ -427,16 +427,27 @@ function loadCustomers() {
 }
 
 function showRetag(customerId, name, currentAgentId) {
-    showModal(`
-        <h3>Re-tag Customer</h3>
-        <p style="margin-bottom:8px"><strong>Customer:</strong> ${name} (${customerId})</p>
-        <p style="margin-bottom:8px"><strong>Current AgentID:</strong> ${currentAgentId}</p>
-        <input type="text" id="newAgentId" value="${currentAgentId}" placeholder="New Agent ID" style="margin-top:8px">
-        <div class="modal-actions">
-            <button class="btn" onclick="closeModal()">Cancel</button>
-            <button class="btn btn-primary" onclick="saveRetag('${customerId}','${name.replace(/'/g, "\\'")}')">Save</button>
-        </div>
-    `);
+    // Fetch agents for dropdown
+    api('list', { sheet: 'Agents' }).then(r => {
+        const agents = r.data || [];
+        let options = '<option value="">Select Agent</option>';
+        agents.forEach(a => {
+            const aid = a.AgentID || '';
+            const aname = a.Name || '';
+            const sel = aid === currentAgentId ? 'selected' : '';
+            options += `<option value="${aid}" ${sel}>${aname} (${aid})</option>`;
+        });
+        showModal(`
+            <h3>Re-tag Customer</h3>
+            <p style="margin-bottom:8px"><strong>Customer:</strong> ${name} (${customerId})</p>
+            <p style="margin-bottom:8px"><strong>Current Agent:</strong> ${currentAgentId}</p>
+            <select id="newAgentId" style="width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin-top:8px">${options}</select>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveRetag('${customerId}','${name.replace(/'/g, "\\'")}')">Save</button>
+            </div>
+        `);
+    });
 }
 
 function saveRetag(customerId, name) {
