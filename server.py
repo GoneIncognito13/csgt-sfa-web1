@@ -66,7 +66,7 @@ def upload_image():
     url = request.host_url.rstrip('/') + '/uploads/' + name
     return json.dumps({'success': True, 'url': url})
 
-@app.route('/api/product-template')
+@app.route('/api/product-template.xlsx')
 def api_product_template():
     import openpyxl
     wb = openpyxl.Workbook()
@@ -79,10 +79,8 @@ def api_product_template():
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    resp = Response(output.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    resp.headers['Content-Disposition'] = 'attachment; filename=product_template.xlsx'
-    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    return resp
+    return Response(output.getvalue(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    headers={'Content-Disposition': 'inline; filename="product_template.xlsx"'})
 
 @app.route('/api/import-products', methods=['POST'])
 def api_import_products():

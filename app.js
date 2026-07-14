@@ -318,7 +318,7 @@ function showImportDialog() {
     showModal(`
         <h3>Import Products from Excel</h3>
         <p style="font-size:13px;color:#666;margin-bottom:12px">Upload an .xlsx file with columns: <strong>Name</strong>, <strong>Price</strong>, <strong>Principal</strong>, <strong>ProductID</strong> (all required)</p>
-        <p style="font-size:13px;margin-bottom:12px"><a href="/api/product-template" download style="color:#1B3A5C;font-weight:600">📥 Download Template</a></p>
+        <p style="font-size:13px;margin-bottom:12px"><a href="/api/product-template.xlsx" style="color:#1B3A5C;font-weight:600">📥 Download Template (.xlsx)</a></p>
         <input type="file" id="excelFile" accept=".xlsx" style="margin-bottom:12px">
         <div id="importProgress" style="font-size:13px;color:#888"></div>
         <div class="modal-actions">
