@@ -130,12 +130,17 @@ function switchTab(name) {
 }
 
 function toggleMobileMenu() {
-    document.getElementById('mobileSidebar').classList.toggle('open');
-    document.getElementById('mobileOverlay').style.display = document.getElementById('mobileSidebar').classList.contains('open') ? 'block' : 'none';
+    const sidebar = document.getElementById('mobileSidebar');
+    const overlay = document.getElementById('mobileOverlay');
+    sidebar.classList.toggle('open');
+    overlay.style.display = sidebar.classList.contains('open') ? 'block' : 'none';
+    document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
 }
 function closeMobileMenu() {
-    document.getElementById('mobileSidebar').classList.remove('open');
+    const sidebar = document.getElementById('mobileSidebar');
+    sidebar.classList.remove('open');
     document.getElementById('mobileOverlay').style.display = 'none';
+    document.body.style.overflow = '';
 }
 
 // ===================== MODAL =====================
