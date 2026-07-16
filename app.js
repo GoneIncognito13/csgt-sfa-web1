@@ -672,23 +672,110 @@ function showInventoryHistory(truckId) {
         const counts = (cnt.data || []).filter(c => c.TruckID === truckId);
         if (!counts.length) { alert('No count history'); return; }
         
-        const grouped = {};
+        // Group by full datetime (batch)
+        const batches = {};
         counts.forEach(c => {
-            const d = c.Date ? c.Date.split(' ')[0] : 'Unknown';
-            if (!grouped[d]) grouped[d] = [];
-            grouped[d].push(c);
+            const batchKey = c.Date || 'Unknown';
+            if (!batches[batchKey]) batches[batchKey] = [];
+            batches[batchKey].push(c);
         });
         
         let html = `<h3 style="margin-bottom:12px">📊 Inventory Count History - ${truckId}</h3>
-        <table><tr><th>Inventory Date</th><th>Items Counted</th></tr>`;
+        <table><tr><th>Batch</th><th>Items</th><th>Actions</th></tr>`;
         
-        Object.keys(grouped).sort().reverse().forEach(date => {
-            const items = grouped[date];
-            html += `<tr><td>${date}</td><td>${items.length} item(s)</td></tr>`;
+        const keys = Object.keys(batches).sort().reverse();
+        keys.forEach(batchKey => {
+            const items = batches[batchKey];
+            const escapedKey = batchKey.replace(/'/g, "\\'");
+            html += `<tr>
+                <td>${batchKey}</td>
+                <td>${items.length} item(s)</td>
+                <td class="btn-group">
+                    <button class="btn btn-sm btn-primary" onclick="editInventoryCount('${truckId}','${escapedKey}')">Edit</button>
+                    <button class="btn btn-sm btn-success" onclick="postInventoryCount('${truckId}','${escapedKey}')">Post Count</button>
+                </td>
+            </tr>`;
         });
         
         html += '</table><div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>';
         showModal(html);
+    });
+}
+
+function editInventoryCount(truckId, batchKey) {
+    api('list', { sheet: 'TruckInventoryCounts' }).then(cnt => {
+        const items = (cnt.data || []).filter(c => c.TruckID === truckId && c.Date === batchKey);
+        if (!items.length) return;
+        
+        let html = `<h3 style="margin-bottom:12px">Edit Count - ${truckId} (${batchKey})</h3>
+        <div style="max-height:60vh;overflow-y:auto">
+        <table><tr><th>Product</th><th>Previous Count</th><th>New Count</th></tr>`;
+        
+        items.forEach(item => {
+            const pn = item.ProductName || '';
+            const prevQty = item.QuantityCounted || '0';
+            html += `<tr>
+                <td>${pn}</td>
+                <td>${prevQty}</td>
+                <td><input type="number" id="sc_${pn.replace(/\s/g,'_')}" value="${prevQty}" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:13px"></td>
+            </tr>`;
+        });
+        
+        html += `</table></div>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveEditedCount('${truckId}','${batchKey.replace(/'/g, "\\'")}')">💾 Save</button>
+        </div>`;
+        
+        showModal(html);
+    });
+}
+
+function saveEditedCount(truckId, batchKey) {
+    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const inputs = document.querySelectorAll('[id^="sc_"]');
+    let count = 0;
+    
+    inputs.forEach(input => {
+        const pn = input.id.replace('sc_', '').replace(/_/g, ' ');
+        const qty = input.value.trim();
+        if (qty) {
+            api('create', { sheet: 'TruckInventoryCounts', TruckID: truckId, Date: date, ProductName: pn, QuantityCounted: qty });
+            count++;
+        }
+    });
+    
+    if (count > 0) {
+        alert(`✅ ${count} items saved as new batch`);
+        closeModal();
+    }
+}
+
+function postInventoryCount(truckId, batchKey) {
+    if (!confirm(`Post count for ${truckId}? This will overwrite current inventory.`)) return;
+    
+    api('list', { sheet: 'TruckInventoryCounts' }).then(cnt => {
+        const items = (cnt.data || []).filter(c => c.TruckID === truckId && c.Date === batchKey);
+        if (!items.length) { alert('No data'); return; }
+        
+        // Delete all existing inventory for this truck
+        api('list', { sheet: 'TruckInventory' }).then(inv => {
+            const existing = (inv.data || []).filter(i => i.TruckID === truckId);
+            let toProcess = existing.length + items.length;
+            
+            existing.forEach(item => {
+                api('delete', { sheet: 'TruckInventory', idColumn: 'ProductName', idValue: item.ProductName || '' });
+            });
+            
+            // Wait a moment then create new inventory from count
+            setTimeout(() => {
+                items.forEach(item => {
+                    api('create', { sheet: 'TruckInventory', TruckID: truckId, ProductName: item.ProductName || '', Quantity: item.QuantityCounted || '0' });
+                });
+                alert(`✅ Inventory posted for ${truckId}`);
+                closeModal();
+            }, 2000);
+        });
     });
 }
 
