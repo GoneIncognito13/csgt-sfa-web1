@@ -691,6 +691,7 @@ function showInventoryHistory(truckId) {
                 <td>${batchKey}</td>
                 <td>${items.length} item(s)</td>
                 <td class="btn-group">
+                    <button class="btn btn-sm btn-primary" onclick="viewInventoryCount('${truckId}','${escapedKey}')">View</button>
                     <button class="btn btn-sm btn-primary" onclick="editInventoryCount('${truckId}','${escapedKey}')">Edit</button>
                     <button class="btn btn-sm btn-success" onclick="postInventoryCount('${truckId}','${escapedKey}')">Post Count</button>
                 </td>
@@ -698,6 +699,54 @@ function showInventoryHistory(truckId) {
         });
         
         html += '</table><div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>';
+        showModal(html);
+    });
+}
+
+function viewInventoryCount(truckId, batchKey) {
+    Promise.all([api('list', { sheet: 'TruckInventoryCounts' }), api('list', { sheet: 'TruckInventory' }), api('list', { sheet: 'Products' })]).then(([cnt, inv, pr]) => {
+        const countItems = (cnt.data || []).filter(c => c.TruckID === truckId && c.Date === batchKey);
+        const currentInv = (inv.data || []).filter(i => i.TruckID === truckId);
+        const priceMap = {};
+        const prodIdMap = {};
+        (pr.data || []).forEach(p => { priceMap[p.Name] = parseFloat(p.Price) || 0; prodIdMap[p.Name] = p.ProductID || ''; });
+        
+        if (!countItems.length) return;
+        
+        let html = `<h3 style="margin-bottom:12px">📋 Count Detail - ${truckId} (${batchKey})</h3>
+        <table><tr><th>ProductID</th><th>ProductName</th><th>System Inv</th><th>Counted</th><th>Variance Qty</th><th>Variance Amount</th></tr>`;
+        
+        let totalAmount = 0;
+        countItems.forEach(item => {
+            const pn = item.ProductName || '';
+            const pid = prodIdMap[pn] || '';
+            const counted = parseInt(item.QuantityCounted || '0');
+            const currInv = currentInv.find(i => (i.ProductName || '').toLowerCase() === pn.toLowerCase());
+            const sysInv = parseInt(currInv?.Quantity || '0');
+            const qtyVar = counted - sysInv;
+            const price = priceMap[pn] || 0;
+            const amtVar = qtyVar * price;
+            totalAmount += amtVar;
+            
+            const qClass = qtyVar > 0 ? 'color:#2ecc71' : qtyVar < 0 ? 'color:#e74c3c' : 'color:#888';
+            const aClass = amtVar > 0 ? 'color:#2ecc71' : amtVar < 0 ? 'color:#e74c3c' : 'color:#888';
+            html += `<tr>
+                <td>${pid}</td><td>${pn}</td><td>${sysInv}</td><td>${counted}</td>
+                <td style="${qClass};font-weight:bold">${qtyVar > 0 ? '+' : ''}${qtyVar}</td>
+                <td style="${aClass};font-weight:bold">${amtVar >= 0 ? '+' : ''}₱${amtVar.toFixed(2)}</td>
+            </tr>`;
+        });
+        
+        const tClass = totalAmount > 0 ? 'color:#2ecc71' : totalAmount < 0 ? 'color:#e74c3c' : 'color:#888';
+        html += `</table>
+        <div style="margin-top:12px;padding:10px;background:rgba(0,0,0,.2);border-radius:6px;text-align:center">
+            <strong>Total Variance Amount: </strong>
+            <span style="font-size:20px;font-weight:bold;${tClass}">
+                ${totalAmount >= 0 ? '+' : ''}₱${totalAmount.toFixed(2)}
+            </span>
+        </div>
+        <div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`;
+        
         showModal(html);
     });
 }
