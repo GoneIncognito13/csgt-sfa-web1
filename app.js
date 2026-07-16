@@ -700,59 +700,67 @@ function showInventoryCount(truckId) {
 
 function finishInventoryCount(truckId) {
     const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    const inputs = document.querySelectorAll('[id^="sc_"]');
-    let results = [];
-    let totalVariance = 0;
-    
-    // Collect data from the table
-    const rows = document.querySelectorAll('#modalContent table tr');
-    let rowIdx = 0;
-    inputs.forEach(input => {
-        const pn = input.id.replace('sc_', '').replace(/_/g, ' ');
-        const qty = input.value.trim();
-        // Find the inventory value from the table row
-        const row = rows[rowIdx + 1]; // +1 for header
-        const cells = row ? row.querySelectorAll('td') : [];
-        const pid = cells ? (cells[0]?.textContent || '') : '';
-        const inv = cells ? (cells[2]?.textContent || '0') : '0';
-        const invNum = parseInt(inv) || 0;
-        const countNum = parseInt(qty) || 0;
-        const variance = countNum - invNum;
-        totalVariance += variance;
+    // Fetch product prices for monetary variance
+    api('list', { sheet: 'Products' }).then(pr => {
+        const priceMap = {};
+        (pr.data || []).forEach(p => { priceMap[p.Name] = parseFloat(p.Price) || 0; });
         
-        results.push({ pid, pn, inv, qty: qty || '0', variance });
+        const inputs = document.querySelectorAll('[id^="sc_"]');
+        let results = [];
+        let totalAmountVariance = 0;
         
-        // Save if count entered
-        if (qty) {
-            api('create', { sheet: 'TruckInventoryCounts', TruckID: truckId, Date: date, ProductName: pn, QuantityCounted: qty });
-        }
-        rowIdx++;
+        const rows = document.querySelectorAll('#modalContent table tr');
+        let rowIdx = 0;
+        inputs.forEach(input => {
+            const pn = input.id.replace('sc_', '').replace(/_/g, ' ');
+            const qty = input.value.trim();
+            const row = rows[rowIdx + 1];
+            const cells = row ? row.querySelectorAll('td') : [];
+            const pid = cells ? (cells[0]?.textContent || '') : '';
+            const inv = cells ? (cells[2]?.textContent || '0') : '0';
+            const invNum = parseInt(inv) || 0;
+            const countNum = parseInt(qty) || 0;
+            const qtyVariance = countNum - invNum;
+            const price = priceMap[pn] || 0;
+            const amountVariance = qtyVariance * price;
+            totalAmountVariance += amountVariance;
+            
+            results.push({ pid, pn, inv, qty: qty || '0', qtyVariance, price, amountVariance });
+            
+            if (qty) {
+                api('create', { sheet: 'TruckInventoryCounts', TruckID: truckId, Date: date, ProductName: pn, QuantityCounted: qty });
+            }
+            rowIdx++;
+        });
+        
+        let html = `<h3>📊 Count Summary - ${truckId}</h3>
+        <table><tr><th>ProductID</th><th>ProductName</th><th>Inventory</th><th>Count</th><th>Price</th><th>Variance Qty</th><th>Variance Amount</th></tr>`;
+        
+        results.forEach(r => {
+            const qClass = r.qtyVariance > 0 ? 'color:#2ecc71' : r.qtyVariance < 0 ? 'color:#e74c3c' : 'color:#888';
+            const aClass = r.amountVariance > 0 ? 'color:#2ecc71' : r.amountVariance < 0 ? 'color:#e74c3c' : 'color:#888';
+            html += `<tr>
+                <td>${r.pid}</td><td>${r.pn}</td><td>${r.inv}</td><td>${r.qty}</td>
+                <td>₱${r.price.toFixed(2)}</td>
+                <td style="${qClass};font-weight:bold">${r.qtyVariance > 0 ? '+' : ''}${r.qtyVariance}</td>
+                <td style="${aClass};font-weight:bold">${r.amountVariance >= 0 ? '+' : ''}₱${r.amountVariance.toFixed(2)}</td>
+            </tr>`;
+        });
+        
+        const totalClass = totalAmountVariance > 0 ? 'color:#2ecc71' : totalAmountVariance < 0 ? 'color:#e74c3c' : 'color:#888';
+        html += `</table>
+        <div style="margin-top:12px;padding:10px;background:rgba(0,0,0,.2);border-radius:6px;text-align:center">
+            <strong>Total Variance Amount: </strong>
+            <span style="font-size:22px;font-weight:bold;${totalClass}">
+                ${totalAmountVariance >= 0 ? '+' : ''}₱${totalAmountVariance.toFixed(2)}
+            </span>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-success" onclick="closeModal()">Done</button>
+        </div>`;
+        
+        showModal(html);
     });
-    
-    // Show summary
-    let html = `<h3>📊 Count Summary - ${truckId}</h3>
-    <table><tr><th>ProductID</th><th>ProductName</th><th>Inventory</th><th>Count</th><th>Variance</th></tr>`;
-    
-    results.forEach(r => {
-        const varClass = r.variance > 0 ? 'color:#2ecc71' : r.variance < 0 ? 'color:#e74c3c' : 'color:#888';
-        html += `<tr>
-            <td>${r.pid}</td><td>${r.pn}</td><td>${r.inv}</td><td>${r.qty}</td>
-            <td style="${varClass};font-weight:bold">${r.variance > 0 ? '+' : ''}${r.variance}</td>
-        </tr>`;
-    });
-    
-    html += `</table>
-    <div style="margin-top:12px;padding:10px;background:rgba(0,0,0,.2);border-radius:6px;text-align:center">
-        <strong>Total Variance: </strong>
-        <span style="font-size:20px;font-weight:bold;${totalVariance > 0 ? 'color:#2ecc71' : totalVariance < 0 ? 'color:#e74c3c' : 'color:#888'}">
-            ${totalVariance > 0 ? '+' : ''}${totalVariance}
-        </span>
-    </div>
-    <div class="modal-actions">
-        <button class="btn btn-success" onclick="closeModal()">Done</button>
-    </div>`;
-    
-    showModal(html);
 }
 
 function finishSpotCount(truckId) {
