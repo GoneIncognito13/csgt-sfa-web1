@@ -557,6 +557,8 @@ function cancelCustomerImport() {
 }
 
 // ===================== EXTRUCK =====================
+let extruckBranchFilter = '';
+
 function loadExtruck() {
     const el = document.getElementById('tab-extruck');
     el.innerHTML = '<div class="spinner">Loading...</div>';
@@ -566,25 +568,39 @@ function loadExtruck() {
         api('list', { sheet: 'TruckInventoryCounts' }),
         api('list', { sheet: 'SalesReturns' }),
         api('list', { sheet: 'TruckGPS' }),
-    ]).then(([tr, inv, cnt, ret, gps]) => {
+        api('list', { sheet: 'Branches' }),
+    ]).then(([tr, inv, cnt, ret, gps, br]) => {
         const trucks = tr.data || [];
         const inventory = inv.data || [];
         const counts = cnt.data || [];
         const returns = ret.data || [];
         const gpsData = gps.data || [];
+        const branches = br.data || [];
+        
+        // Filter by branch
+        const filteredTrucks = extruckBranchFilter ? trucks.filter(t => (t.Branch || '').toLowerCase() === extruckBranchFilter.toLowerCase()) : trucks;
         
         let html = '<h3 style="margin-bottom:12px">Extruck Management</h3>';
         
+        // Branch filter dropdown
+        html += `<div class="filters" style="margin-bottom:12px">
+            <select id="extruckBranchSelect" onchange="extruckBranchFilter=this.value;loadExtruck()" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+                <option value="">All Branches</option>
+                ${branches.map(b => `<option value="${b.BranchName || b.Name || ''}" ${(b.BranchName||b.Name) === extruckBranchFilter ? 'selected' : ''}>${b.BranchName || b.Name}</option>`).join('')}
+            </select>
+            <span style="font-size:13px;color:#888">${filteredTrucks.length} truck(s)</span>
+        </div>`;
+        
         // Summary cards
         html += '<div class="summary">';
-        html += `<div class="summary-card"><div class="num">${trucks.length}</div><div class="label">Trucks</div></div>`;
+        html += `<div class="summary-card"><div class="num">${filteredTrucks.length}</div><div class="label">Trucks</div></div>`;
         html += `<div class="summary-card"><div class="num">${returns.filter(r => r.Status === 'Pending').length}</div><div class="label">Pending Returns</div></div>`;
         html += `<div class="summary-card"><div class="num">${gpsData.length}</div><div class="label">GPS Pings</div></div>`;
         html += '</div>';
         
         // Truck list
         html += '<table><tr><th>TruckID</th><th>Name</th><th>AgentID</th><th>Branch</th><th>Status</th><th>Actions</th></tr>';
-        trucks.forEach(t => {
+        filteredTrucks.forEach(t => {
             const tid = t.TruckID || '';
             const agentInv = inventory.filter(i => i.TruckID === tid);
             const totalInv = agentInv.reduce((s, i) => s + (parseInt(i.Quantity) || 0), 0);
