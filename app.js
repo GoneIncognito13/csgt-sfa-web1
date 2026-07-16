@@ -610,7 +610,8 @@ function loadExtruck() {
                 <td><span class="badge ${(t.Status||'Active') === 'Active' ? 'badge-active' : 'badge-inactive'}">${t.Status || 'Active'}</span></td>
                 <td class="btn-group">
                     <button class="btn btn-sm btn-primary" onclick="showTruckDetail('${tid}')">Detail</button>
-                    <button class="btn btn-sm btn-success" onclick="showInventoryCount('${tid}')">📋 Count</button>
+                    <button class="btn btn-sm btn-primary" onclick="showInventoryCount('${tid}')">📋 Count</button>
+                    <button class="btn btn-sm btn-primary" onclick="showInventoryHistory('${tid}')">📊 History</button>
                     <button class="btn btn-sm btn-success" onclick="showAssignTruck()">+ Assign</button>
                 </td>
             </tr>`;
@@ -666,6 +667,31 @@ function showTruckDetail(truckId) {
     });
 }
 
+function showInventoryHistory(truckId) {
+    api('list', { sheet: 'TruckInventoryCounts' }).then(cnt => {
+        const counts = (cnt.data || []).filter(c => c.TruckID === truckId);
+        if (!counts.length) { alert('No count history'); return; }
+        
+        const grouped = {};
+        counts.forEach(c => {
+            const d = c.Date ? c.Date.split(' ')[0] : 'Unknown';
+            if (!grouped[d]) grouped[d] = [];
+            grouped[d].push(c);
+        });
+        
+        let html = `<h3 style="margin-bottom:12px">📊 Inventory Count History - ${truckId}</h3>
+        <table><tr><th>Inventory Date</th><th>Items Counted</th></tr>`;
+        
+        Object.keys(grouped).sort().reverse().forEach(date => {
+            const items = grouped[date];
+            html += `<tr><td>${date}</td><td>${items.length} item(s)</td></tr>`;
+        });
+        
+        html += '</table><div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>';
+        showModal(html);
+    });
+}
+
 function showInventoryCount(truckId) {
     Promise.all([api('list', { sheet: 'TruckInventory' }), api('list', { sheet: 'Products' })]).then(([inv, pr]) => {
         const items = (inv.data || []).filter(i => i.TruckID === truckId);
@@ -691,7 +717,7 @@ function showInventoryCount(truckId) {
         html += `</table></div>
         <div class="modal-actions">
             <button class="btn" onclick="closeModal()">Cancel</button>
-            <button class="btn btn-success" onclick="finishInventoryCount('${truckId}')">💾 Save & Finish Count</button>
+            <button class="btn btn-primary" onclick="finishInventoryCount('${truckId}')">💾 Save as Draft</button>
         </div>`;
         
         showModal(html);
