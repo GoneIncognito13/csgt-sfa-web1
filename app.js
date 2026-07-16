@@ -610,6 +610,7 @@ function loadExtruck() {
                 <td><span class="badge ${(t.Status||'Active') === 'Active' ? 'badge-active' : 'badge-inactive'}">${t.Status || 'Active'}</span></td>
                 <td class="btn-group">
                     <button class="btn btn-sm btn-primary" onclick="showTruckDetail('${tid}')">Detail</button>
+                    <button class="btn btn-sm btn-success" onclick="showInventoryCount('${tid}')">📋 Count</button>
                     <button class="btn btn-sm btn-success" onclick="showAssignTruck()">+ Assign</button>
                 </td>
             </tr>`;
@@ -665,36 +666,58 @@ function showTruckDetail(truckId) {
     });
 }
 
-function showSpotCount(truckId) {
-    api('list', { sheet: 'TruckInventory' }).then(inv => {
+function showInventoryCount(truckId) {
+    Promise.all([api('list', { sheet: 'TruckInventory' }), api('list', { sheet: 'Products' })]).then(([inv, pr]) => {
         const items = (inv.data || []).filter(i => i.TruckID === truckId);
-        let html = `<h3>Spot Count - ${truckId}</h3>
-        <p style="font-size:12px;color:#888;margin-bottom:8px">Enter actual count for each product</p>
-        <div id="spotCountForm">`;
+        const prodMap = {};
+        (pr.data || []).forEach(p => { prodMap[p.Name] = p.ProductID || ''; });
         
-        // Add principal filter
-        api('list', { sheet: 'Products' }).then(pr => {
-            const prodMap = {};
-            (pr.data || []).forEach(p => { prodMap[p.Name] = p.Principal || ''; });
-            
-            items.forEach(item => {
-                const pn = item.ProductName || '';
-                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px;margin:3px 0;background:rgba(0,0,0,.3);border-radius:5px">
-                    <div><strong>${pn}</strong><br><span style="font-size:10px;color:#888">System: ${item.Quantity || '0'} | ${prodMap[pn] || ''}</span></div>
-                    <input type="number" id="sc_${pn.replace(/\s/g,'_')}" placeholder="Actual" style="width:80px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:13px">
-                </div>`;
-            });
-            
-            html += `</div>
-            <div class="modal-actions">
-                <button class="btn" onclick="closeModal()">Cancel</button>
-                <button class="btn btn-success" onclick="finishSpotCount('${truckId}')">✅ Finish Count</button>
-            </div>`;
-            
-            // Replace modal content
-            document.getElementById('modalContent').innerHTML = html;
+        let html = `<h3>Inventory Count - ${truckId}</h3>
+        <div style="max-height:60vh;overflow-y:auto">
+        <table><tr><th>ProductID</th><th>ProductName</th><th>Inventory</th><th>Count</th></tr>`;
+        
+        items.forEach(item => {
+            const pn = item.ProductName || '';
+            const pid = prodMap[pn] || '';
+            const invQty = item.Quantity || '0';
+            html += `<tr>
+                <td>${pid}</td>
+                <td>${pn}</td>
+                <td>${invQty}</td>
+                <td><input type="number" id="sc_${pn.replace(/\s/g,'_')}" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:13px"></td>
+            </tr>`;
         });
+        
+        html += `</table></div>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-success" onclick="finishInventoryCount('${truckId}')">💾 Save & Finish Count</button>
+        </div>`;
+        
+        showModal(html);
     });
+}
+
+function finishInventoryCount(truckId) {
+    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const inputs = document.querySelectorAll('[id^="sc_"]');
+    let count = 0;
+    
+    inputs.forEach(input => {
+        const pn = input.id.replace('sc_', '').replace(/_/g, ' ');
+        const qty = input.value.trim();
+        if (qty) {
+            api('create', { sheet: 'TruckInventoryCounts', TruckID: truckId, Date: date, ProductName: pn, QuantityCounted: qty });
+            count++;
+        }
+    });
+    
+    if (count > 0) {
+        alert(`✅ ${count} items counted`);
+        closeModal();
+    } else {
+        alert('No counts entered');
+    }
 }
 
 function finishSpotCount(truckId) {
