@@ -45,6 +45,21 @@ function registerAdmin() {
 }
 
 // ===================== LOGIN =====================
+function initMobileNav() {
+    const nav = document.getElementById('mobileNav');
+    const tabs = [
+        { name: 'orders', label: '📦 Orders' },
+        { name: 'products', label: '📋 Products' },
+        { name: 'extruck', label: '🚛 Extruck' },
+        { name: 'customers', label: '👥 Customers' },
+        { name: 'branches', label: '🏢 Branches' },
+        { name: 'principals', label: '🏭 Principals' },
+        { name: 'agents', label: '👤 Agents' },
+        { name: 'calls', label: '📸 Calls' },
+    ];
+    nav.innerHTML = tabs.map((t, i) => `<button class="${i === 0 ? 'active' : ''}" onclick="switchTab('${t.name}')">${t.label}</button>`).join('');
+}
+
 function adminLogin() {
     const username = document.getElementById('adminUser').value.trim();
     const password = document.getElementById('adminPass').value.trim();
@@ -59,8 +74,8 @@ function adminLogin() {
             const remember = document.getElementById('rememberAdmin').checked;
             if (remember) localStorage.setItem('adminSession', JSON.stringify({ username, password }));
             document.getElementById('loginPage').style.display = 'none';
-            document.getElementById('adminPage').style.display = 'flex';
-            document.getElementById('adminPage').style.flexDirection = 'column';
+            document.getElementById('adminPage').style.display = 'block';
+            initMobileNav();
             loadOrders();
         } else {
             err.textContent = 'Invalid credentials';
@@ -84,10 +99,26 @@ if (adminSession.username) {
 
 // ===================== TABS =====================
 function switchTab(name) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    // Sidebar buttons
+    document.querySelectorAll('#sidebar button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#sidebar button').forEach(b => {
+        if (b.textContent.includes(name === 'extruck' ? 'Extruck' : name.charAt(0).toUpperCase() + name.slice(1))) {
+            b.classList.add('active');
+        }
+    });
+    // Mobile nav
+    document.querySelectorAll('#mobileNav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#mobileNav button').forEach(b => {
+        if (b.textContent.includes(name === 'extruck' ? 'Extruck' : name.charAt(0).toUpperCase() + name.slice(1))) {
+            b.classList.add('active');
+        }
+    });
+    // Content
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.querySelector(`.tab[onclick*="${name}"]`).classList.add('active');
     document.getElementById(`tab-${name}`).classList.add('active');
+    // Close mobile sidebar
+    closeMobileMenu();
+    // Load data
     if (name === 'orders') loadOrders();
     if (name === 'products') loadProducts();
     if (name === 'customers') loadCustomers();
@@ -96,6 +127,15 @@ function switchTab(name) {
     if (name === 'principals') loadPrincipals();
     if (name === 'agents') loadAgents();
     if (name === 'calls') loadCalls();
+}
+
+function toggleMobileMenu() {
+    document.getElementById('mobileSidebar').classList.toggle('open');
+    document.getElementById('mobileOverlay').style.display = document.getElementById('mobileSidebar').classList.contains('open') ? 'block' : 'none';
+}
+function closeMobileMenu() {
+    document.getElementById('mobileSidebar').classList.remove('open');
+    document.getElementById('mobileOverlay').style.display = 'none';
 }
 
 // ===================== MODAL =====================

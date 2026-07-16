@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>CSGT SFA - Admin</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -14,10 +14,10 @@
             <h2>Administrator Access</h2>
             <input type="text" id="adminUser" placeholder="Admin Username" autocomplete="off">
             <input type="password" id="adminPass" placeholder="Password">
-            <label class="checkbox-label"><input type="checkbox" id="rememberAdmin"> Remember Admin</label>
+            <label class="checkbox-label" style="font-size:14px;color:#555;display:flex;align-items:center;gap:8px;align-self:flex-start"><input type="checkbox" id="rememberAdmin"> Remember Admin</label>
             <p id="loginError" class="error-msg"></p>
-            <button onclick="adminLogin()">Login as Admin</button>
-            <button onclick="showRegister()" style="background:transparent;color:#1B3A5C;border:1px solid #1B3A5C;width:100%;padding:12px;border-radius:8px;font-size:15px;cursor:pointer;font-weight:600">Register Account</button>
+            <button class="btn-login" onclick="adminLogin()">Login as Admin</button>
+            <button class="btn-outline" onclick="showRegister()">Register Account</button>
             <p class="version-text">NeilQ. Deployment Version: v.20.13.7.26 20:01</p>
         </div>
     </div>
@@ -33,38 +33,51 @@
             <input type="password" id="regPassword" placeholder="Password">
             <input type="password" id="regConfirm" placeholder="Confirm Password">
             <p id="regError" class="error-msg"></p>
-            <button onclick="registerAdmin()">Register Admin</button>
-            <button onclick="backToLogin()" style="background:transparent;color:#1B3A5C;border:none;cursor:pointer;font-size:14px">Already have an account? Log in</button>
+            <button class="btn-login" onclick="registerAdmin()">Register Admin</button>
+            <button class="btn-outline" onclick="backToLogin()">Already have an account? Log in</button>
         </div>
     </div>
 
-    <div id="adminPage" class="page" style="display:none">
+    <div id="adminPage" style="display:none">
         <div class="topbar">
-            <h2>CSGT SFA - Admin Dashboard</h2>
-            <div style="display:flex;gap:8px">
-                <button onclick="cleanupOld()" class="logout-btn" style="font-size:12px">Cleanup 30d+</button>
-                <button onclick="logout()" class="logout-btn">Logout</button>
+            <div style="display:flex;align-items:center;gap:12px">
+                <button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
+                <h2>CSGT SFA</h2>
+            </div>
+            <div class="actions">
+                <button onclick="cleanupOld()">Cleanup 30d+</button>
+                <button onclick="logout()">Logout</button>
             </div>
         </div>
-        <div class="tabs">
-            <button class="tab active" onclick="switchTab('orders')">Orders</button>
-            <button class="tab" onclick="switchTab('products')">Products</button>
-            <button class="tab" onclick="switchTab('branches')">Branches</button>
-            <button class="tab" onclick="switchTab('principals')">Principals</button>
-            <button class="tab" onclick="switchTab('agents')">Agents</button>
-            <button class="tab" onclick="switchTab('extruck')">Extruck</button>
-            <button class="tab" onclick="switchTab('customers')">Customers</button>
-            <button class="tab" onclick="switchTab('calls')">Calls</button>
+
+        <div class="mobile-overlay" id="mobileOverlay" onclick="toggleMobileMenu()"></div>
+        <div class="mobile-sidebar" id="mobileSidebar">
+            <button class="close-btn" onclick="toggleMobileMenu()">✕</button>
+            <h3>Navigation</h3>
+            <div id="mobileNav"></div>
         </div>
-        <div class="content">
-            <div id="tab-orders" class="tab-content active"></div>
-            <div id="tab-products" class="tab-content"></div>
-            <div id="tab-extruck" class="tab-content"></div>
-            <div id="tab-customers" class="tab-content"></div>
-            <div id="tab-branches" class="tab-content"></div>
-            <div id="tab-principals" class="tab-content"></div>
-            <div id="tab-agents" class="tab-content"></div>
-            <div id="tab-calls" class="tab-content"></div>
+
+        <div class="app-layout">
+            <div class="sidebar" id="sidebar">
+                <button class="active" onclick="switchTab('orders')">📦 Orders</button>
+                <button onclick="switchTab('products')">📋 Products</button>
+                <button onclick="switchTab('extruck')">🚛 Extruck</button>
+                <button onclick="switchTab('customers')">👥 Customers</button>
+                <button onclick="switchTab('branches')">🏢 Branches</button>
+                <button onclick="switchTab('principals')">🏭 Principals</button>
+                <button onclick="switchTab('agents')">👤 Agents</button>
+                <button onclick="switchTab('calls')">📸 Calls</button>
+            </div>
+            <div class="content">
+                <div id="tab-orders" class="tab-content active"></div>
+                <div id="tab-products" class="tab-content"></div>
+                <div id="tab-extruck" class="tab-content"></div>
+                <div id="tab-customers" class="tab-content"></div>
+                <div id="tab-branches" class="tab-content"></div>
+                <div id="tab-principals" class="tab-content"></div>
+                <div id="tab-agents" class="tab-content"></div>
+                <div id="tab-calls" class="tab-content"></div>
+            </div>
         </div>
     </div>
 
