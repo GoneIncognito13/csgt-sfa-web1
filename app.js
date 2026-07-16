@@ -733,15 +733,14 @@ function finishInventoryCount(truckId) {
             rowIdx++;
         });
         
-        let html = `<h3>📊 Count Summary - ${truckId}</h3>
-        <table><tr><th>ProductID</th><th>ProductName</th><th>Inventory</th><th>Count</th><th>Price</th><th>Variance Qty</th><th>Variance Amount</th></tr>`;
+        let html = `<h3 style="margin-bottom:12px">📊 Count Summary - ${truckId}</h3>
+        <table><tr><th>ProductID</th><th>ProductName</th><th>Inventory</th><th>Count</th><th>Variance Qty</th><th>Variance Amount</th></tr>`;
         
         results.forEach(r => {
             const qClass = r.qtyVariance > 0 ? 'color:#2ecc71' : r.qtyVariance < 0 ? 'color:#e74c3c' : 'color:#888';
             const aClass = r.amountVariance > 0 ? 'color:#2ecc71' : r.amountVariance < 0 ? 'color:#e74c3c' : 'color:#888';
             html += `<tr>
                 <td>${r.pid}</td><td>${r.pn}</td><td>${r.inv}</td><td>${r.qty}</td>
-                <td>₱${r.price.toFixed(2)}</td>
                 <td style="${qClass};font-weight:bold">${r.qtyVariance > 0 ? '+' : ''}${r.qtyVariance}</td>
                 <td style="${aClass};font-weight:bold">${r.amountVariance >= 0 ? '+' : ''}₱${r.amountVariance.toFixed(2)}</td>
             </tr>`;
@@ -756,10 +755,15 @@ function finishInventoryCount(truckId) {
             </span>
         </div>
         <div class="modal-actions">
-            <button class="btn btn-success" onclick="closeModal()">Done</button>
+            <button class="btn btn-success" onclick="document.getElementById('tab-extruck').innerHTML='<div class=spinner>Loading...</div>';loadExtruck();closeModal()">Done</button>
         </div>`;
         
-        showModal(html);
+        closeModal();
+        document.getElementById('tab-extruck').innerHTML = '<div class="spinner">Loading...</div>';
+        // Small delay to let the page reset, then show the summary as page content
+        setTimeout(() => {
+            document.getElementById('tab-extruck').innerHTML = html;
+        }, 100);
     });
 }
 
