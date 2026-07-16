@@ -701,23 +701,58 @@ function showInventoryCount(truckId) {
 function finishInventoryCount(truckId) {
     const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
     const inputs = document.querySelectorAll('[id^="sc_"]');
-    let count = 0;
+    let results = [];
+    let totalVariance = 0;
     
+    // Collect data from the table
+    const rows = document.querySelectorAll('#modalContent table tr');
+    let rowIdx = 0;
     inputs.forEach(input => {
         const pn = input.id.replace('sc_', '').replace(/_/g, ' ');
         const qty = input.value.trim();
+        // Find the inventory value from the table row
+        const row = rows[rowIdx + 1]; // +1 for header
+        const cells = row ? row.querySelectorAll('td') : [];
+        const pid = cells ? (cells[0]?.textContent || '') : '';
+        const inv = cells ? (cells[2]?.textContent || '0') : '0';
+        const invNum = parseInt(inv) || 0;
+        const countNum = parseInt(qty) || 0;
+        const variance = countNum - invNum;
+        totalVariance += variance;
+        
+        results.push({ pid, pn, inv, qty: qty || '0', variance });
+        
+        // Save if count entered
         if (qty) {
             api('create', { sheet: 'TruckInventoryCounts', TruckID: truckId, Date: date, ProductName: pn, QuantityCounted: qty });
-            count++;
         }
+        rowIdx++;
     });
     
-    if (count > 0) {
-        alert(`✅ ${count} items counted`);
-        closeModal();
-    } else {
-        alert('No counts entered');
-    }
+    // Show summary
+    let html = `<h3>📊 Count Summary - ${truckId}</h3>
+    <table><tr><th>ProductID</th><th>ProductName</th><th>Inventory</th><th>Count</th><th>Variance</th></tr>`;
+    
+    results.forEach(r => {
+        const varClass = r.variance > 0 ? 'color:#2ecc71' : r.variance < 0 ? 'color:#e74c3c' : 'color:#888';
+        html += `<tr>
+            <td>${r.pid}</td><td>${r.pn}</td><td>${r.inv}</td><td>${r.qty}</td>
+            <td style="${varClass};font-weight:bold">${r.variance > 0 ? '+' : ''}${r.variance}</td>
+        </tr>`;
+    });
+    
+    html += `</table>
+    <div style="margin-top:12px;padding:10px;background:rgba(0,0,0,.2);border-radius:6px;text-align:center">
+        <strong>Total Variance: </strong>
+        <span style="font-size:20px;font-weight:bold;${totalVariance > 0 ? 'color:#2ecc71' : totalVariance < 0 ? 'color:#e74c3c' : 'color:#888'}">
+            ${totalVariance > 0 ? '+' : ''}${totalVariance}
+        </span>
+    </div>
+    <div class="modal-actions">
+        <button class="btn btn-success" onclick="closeModal()">Done</button>
+    </div>`;
+    
+    showModal(html);
 }
 
 function finishSpotCount(truckId) {
