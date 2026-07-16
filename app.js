@@ -616,16 +616,6 @@ function loadExtruck() {
         });
         html += '</table>';
         
-        // Inventory Count History
-        if (counts.length) {
-            html += '<h4 style="margin-top:20px;margin-bottom:8px">Recent Inventory Counts</h4>';
-            html += '<table><tr><th>Date</th><th>Truck</th><th>Product</th><th>Counted</th></tr>';
-            counts.slice(-10).reverse().forEach(c => {
-                html += `<tr><td>${c.Date || ''}</td><td>${c.TruckID || ''}</td><td>${c.ProductName || ''}</td><td>${c.QuantityCounted || ''}</td></tr>`;
-            });
-            html += '</table>';
-        }
-        
         // Sales Returns
         if (returns.length) {
             html += '<h4 style="margin-top:20px;margin-bottom:8px">Sales Returns</h4>';
@@ -634,16 +624,6 @@ function loadExtruck() {
                 html += `<tr><td>${r.Date || ''}</td><td>${r.TruckID || ''}</td><td>${r.OrderID || ''}</td>
                     <td>${r.ProductName || ''}</td><td>${r.Quantity || ''}</td><td>${r.Reason || ''}</td>
                     <td><span class="badge ${r.Status === 'Approved' ? 'badge-active' : 'badge-inactive'}">${r.Status || 'Pending'}</span></td></tr>`;
-            });
-            html += '</table>';
-        }
-        
-        // GPS Data
-        if (gpsData.length) {
-            html += '<h4 style="margin-top:20px;margin-bottom:8px">Latest GPS Locations</h4>';
-            html += '<table><tr><th>Truck</th><th>Agent</th><th>Latitude</th><th>Longitude</th><th>Timestamp</th></tr>';
-            gpsData.slice(-10).reverse().forEach(g => {
-                html += `<tr><td>${g.TruckID || ''}</td><td>${g.AgentID || ''}</td><td>${g.Latitude || ''}</td><td>${g.Longitude || ''}</td><td>${g.Timestamp || ''}</td></tr>`;
             });
             html += '</table>';
         }
