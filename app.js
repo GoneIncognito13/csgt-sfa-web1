@@ -55,6 +55,7 @@ function initMobileNav() {
         { name: 'branches', label: '🏢 Branches' },
         { name: 'principals', label: '🏭 Principals' },
         { name: 'agents', label: '👤 Agents' },
+        { name: 'series', label: '🔢 Series' },
         { name: 'calls', label: '📸 Calls' },
     ];
     nav.innerHTML = tabs.map((t, i) => `<button class="${i === 0 ? 'active' : ''}" onclick="switchTab('${t.name}')">${t.label}</button>`).join('');
@@ -126,6 +127,7 @@ function switchTab(name) {
     if (name === 'branches') loadBranches();
     if (name === 'principals') loadPrincipals();
     if (name === 'agents') loadAgents();
+    if (name === 'series') loadSeries();
     if (name === 'calls') loadCalls();
 }
 
@@ -1093,6 +1095,153 @@ function assignTruck() {
     });
 }
 
+// ===================== SERIES =====================
+function loadSeries() {
+    const el = document.getElementById('tab-series');
+    el.innerHTML = '<div class="spinner">Loading...</div>';
+    api('list', { sheet: 'Series' }).then(r => {
+        const data = r.data || [];
+        let html = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3>Order Number Series</h3>
+                <button class="btn btn-success" onclick="showAddSeries()">+ Add Series</button>
+            </div>
+            <div class="summary">
+                <div class="summary-card"><div class="num">${data.length}</div><div class="label">Series</div></div>
+            </div>`;
+        if (!data.length) {
+            html += '<div class="card" style="text-align:center;color:#888;padding:40px">No series configured. Add one to start generating order numbers.</div>';
+        } else {
+            html += '<table><tr><th>Series Name</th><th>Prefix</th><th>Current Number</th><th>Next Number</th><th>Actions</th></tr>';
+            data.forEach(s => {
+                const sid = s.SeriesID || '';
+                const name = s.SeriesName || '';
+                const prefix = s.Prefix || '';
+                const curr = s.CurrentNumber || '0';
+                const next = parseInt(curr) + 1;
+                html += `<tr>
+                    <td>${name}</td>
+                    <td>${prefix}</td>
+                    <td>${curr}</td>
+                    <td><strong>${prefix}${next}</strong></td>
+                    <td class="btn-group">
+                        <button class="btn btn-sm btn-primary" onclick="editSeries('${sid}')">Edit</button>
+                        <button class="btn btn-sm btn-success" onclick="resetSeries('${sid}')">Reset</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteSeries('${sid}')">Delete</button>
+                    </td>
+                </tr>`;
+            });
+            html += '</table>';
+        }
+        el.innerHTML = html;
+    }).catch(() => el.innerHTML = '<div class="spinner" style="color:#E84C4C">Failed</div>');
+}
+
+function showAddSeries() {
+    showModal(`
+        <h3>Add Series</h3>
+        <input type="text" id="seriesName" placeholder="Series Name (e.g. Default)">
+        <input type="text" id="seriesPrefix" placeholder="Prefix (e.g. ORD-)">
+        <input type="number" id="seriesStart" placeholder="Starting Number (e.g. 1)" value="1">
+        <p style="font-size:12px;color:#888;margin-bottom:8px">Example output: <span id="seriesPreview">ORD-1</span></p>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-success" onclick="saveSeries()">Save</button>
+        </div>
+    `);
+    setTimeout(() => {
+        ['seriesName','seriesPrefix','seriesStart'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.oninput = updateSeriesPreview;
+        });
+        updateSeriesPreview();
+    }, 100);
+}
+
+function updateSeriesPreview() {
+    const prefix = document.getElementById('seriesPrefix')?.value || '';
+    const start = document.getElementById('seriesStart')?.value || '1';
+    document.getElementById('seriesPreview').textContent = prefix + start;
+}
+
+function saveSeries() {
+    const name = document.getElementById('seriesName').value.trim();
+    const prefix = document.getElementById('seriesPrefix').value.trim();
+    const start = document.getElementById('seriesStart').value.trim();
+    if (!name || !prefix || !start) { alert('All fields required'); return; }
+    const sid = 'SERIES_' + Date.now();
+    api('create', { sheet: 'Series', SeriesID: sid, SeriesName: name, Prefix: prefix, CurrentNumber: start }).then(r => {
+        if (r.success) { closeModal(); loadSeries(); }
+        else alert(r.error || 'Failed');
+    });
+}
+
+function editSeries(sid) {
+    api('list', { sheet: 'Series' }).then(r => {
+        const s = (r.data || []).find(x => x.SeriesID === sid);
+        if (!s) return;
+        showModal(`
+            <h3>Edit Series</h3>
+            <input type="text" id="seriesName" value="${s.SeriesName || ''}" placeholder="Series Name">
+            <input type="text" id="seriesPrefix" value="${s.Prefix || ''}" placeholder="Prefix">
+            <input type="number" id="seriesStart" value="${s.CurrentNumber || '1'}" placeholder="Current Number">
+            <p style="font-size:12px;color:#888;margin-bottom:8px">Next output: <span id="seriesPreview">${s.Prefix || ''}${(parseInt(s.CurrentNumber || '1') + 1)}</span></p>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="updateSeries('${sid}')">Update</button>
+            </div>
+        `);
+        setTimeout(() => {
+            ['seriesName','seriesPrefix','seriesStart'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.oninput = () => {
+                    const p = document.getElementById('seriesPrefix')?.value || '';
+                    const n = document.getElementById('seriesStart')?.value || '1';
+                    document.getElementById('seriesPreview').textContent = p + (parseInt(n) + 1);
+                };
+            });
+        }, 100);
+    });
+}
+
+function updateSeries(sid) {
+    const name = document.getElementById('seriesName').value.trim();
+    const prefix = document.getElementById('seriesPrefix').value.trim();
+    const curr = document.getElementById('seriesStart').value.trim();
+    if (!name || !prefix || !curr) { alert('All fields required'); return; }
+    api('delete', { sheet: 'Series', idColumn: 'SeriesID', idValue: sid }).then(() => {
+        setTimeout(() => {
+            api('create', { sheet: 'Series', SeriesID: sid, SeriesName: name, Prefix: prefix, CurrentNumber: curr }).then(r => {
+                if (r.success) { closeModal(); loadSeries(); }
+                else alert(r.error || 'Failed');
+            });
+        }, 1000);
+    });
+}
+
+function resetSeries(sid) {
+    if (!confirm('Reset this series to 1?')) return;
+    api('delete', { sheet: 'Series', idColumn: 'SeriesID', idValue: sid }).then(() => {
+        setTimeout(() => {
+            api('list', { sheet: 'Series' }).then(r => {
+                const s = (r.data || []).find(x => x.SeriesID === sid);
+                const prefix = s ? s.Prefix || '' : '';
+                api('create', { sheet: 'Series', SeriesID: sid, SeriesName: s ? s.SeriesName || '' : '', Prefix: prefix, CurrentNumber: '1' }).then(r2 => {
+                    if (r2.success) loadSeries();
+                });
+            });
+        }, 1000);
+    });
+}
+
+function deleteSeries(sid) {
+    if (!confirm('Delete this series?')) return;
+    api('delete', { sheet: 'Series', idColumn: 'SeriesID', idValue: sid }).then(r => {
+        if (r.success) loadSeries();
+        else alert('Delete failed');
+    });
+}
+
 // ===================== BRANCHES =====================
 function loadBranches() {
     const el = document.getElementById('tab-branches');
@@ -1339,17 +1488,21 @@ function renderCalls() {
             if (detailed) {
             html += '<div class="selfie-grid">';
             html += '<div class="selfie-col"><strong>First Call</strong><br>';
-            const fcSrc = (fc && (fc.SelfieUrl || fc.SelfieBase64 || ''));
+            const fcUrl = (fc && fc.SelfieUrl) || '';
+            const fcB64 = (fc && fc.SelfieBase64) || '';
+            const fcSrc = fcUrl || fcB64 || '';
             if (fcSrc) {
                 html += `<div style="background:#eee;min-height:100px;border-radius:6px;text-align:center;padding:4px">`;
-                html += `<img src="${fcSrc}" style="max-width:100%;height:120px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="showImage(this.src)" onerror="this.parentElement.innerHTML='<span style=color:red>Failed to load</span>'">`;
+                html += `<img src="${fcUrl || fcB64}" style="max-width:100%;height:120px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="showImage(this.src)" onerror="this.parentElement.innerHTML='<span style=color:red>Image unavailable</span>'">`;
                 html += `</div><small>${fc.CaptureTime || ''}</small>`;
             } else html += '<span class="call-status"><span class="missed">No Selfie</span></span>';
             html += '</div><div class="selfie-col"><strong>Last Call</strong><br>';
-            const lcSrc = (lc && (lc.SelfieUrl || lc.SelfieBase64 || ''));
+            const lcUrl = (lc && lc.SelfieUrl) || '';
+            const lcB64 = (lc && lc.SelfieBase64) || '';
+            const lcSrc = lcUrl || lcB64 || '';
             if (lcSrc) {
                 html += `<div style="background:#eee;min-height:100px;border-radius:6px;text-align:center;padding:4px">`;
-                html += `<img src="${lcSrc}" style="max-width:100%;height:120px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="showImage(this.src)" onerror="this.parentElement.innerHTML='<span style=color:red>Failed to load</span>'">`;
+                html += `<img src="${lcUrl || lcB64}" style="max-width:100%;height:120px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="showImage(this.src)" onerror="this.parentElement.innerHTML='<span style=color:red>Image unavailable</span>'">`;
                 html += `</div><small>${lc.CaptureTime || ''}</small>`;
             } else html += '<span class="call-status"><span class="missed">No Selfie</span></span>';
             html += '</div></div>';
