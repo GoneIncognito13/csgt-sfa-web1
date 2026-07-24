@@ -1096,45 +1096,109 @@ function assignTruck() {
 }
 
 // ===================== SERIES =====================
+let seriesBranchFilter = '';
+
 function loadSeries() {
     const el = document.getElementById('tab-series');
     el.innerHTML = '<div class="spinner">Loading...</div>';
-    api('list', { sheet: 'Series' }).then(r => {
-        const data = r.data || [];
+    Promise.all([api('list', { sheet: 'Series' }), api('list', { sheet: 'Branches' }), api('list', { sheet: 'Agents' }), api('list', { sheet: 'AgentSeries' })]).then(([sr, br, ag, asr]) => {
+        const series = sr.data || [];
+        const branches = br.data || [];
+        const agents = ag.data || [];
+        const agentSeries = asr.data || [];
+
         let html = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <h3>Order Number Series</h3>
                 <button class="btn btn-success" onclick="showAddSeries()">+ Add Series</button>
-            </div>
-            <div class="summary">
-                <div class="summary-card"><div class="num">${data.length}</div><div class="label">Series</div></div>
             </div>`;
-        if (!data.length) {
-            html += '<div class="card" style="text-align:center;color:#888;padding:40px">No series configured. Add one to start generating order numbers.</div>';
-        } else {
-            html += '<table><tr><th>Series Name</th><th>Prefix</th><th>Current Number</th><th>Next Number</th><th>Actions</th></tr>';
-            data.forEach(s => {
-                const sid = s.SeriesID || '';
-                const name = s.SeriesName || '';
-                const prefix = s.Prefix || '';
-                const curr = s.CurrentNumber || '0';
-                const next = parseInt(curr) + 1;
-                html += `<tr>
-                    <td>${name}</td>
-                    <td>${prefix}</td>
-                    <td>${curr}</td>
-                    <td><strong>${prefix}${next}</strong></td>
-                    <td class="btn-group">
-                        <button class="btn btn-sm btn-primary" onclick="editSeries('${sid}')">Edit</button>
-                        <button class="btn btn-sm btn-success" onclick="resetSeries('${sid}')">Reset</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteSeries('${sid}')">Delete</button>
-                    </td>
-                </tr>`;
-            });
-            html += '</table>';
+
+        // Branch filter + Series template list
+        html += `<div class="filters">
+            <select id="seriesBranchFilter" onchange="seriesBranchFilter=this.value;loadSeries()" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+                <option value="">Select Branch</option>
+                ${branches.map(b => `<option value="${b.BranchName || b.Name || ''}">${b.BranchName || b.Name}</option>`).join('')}
+            </select>
+        </div>`;
+
+        // Series templates table
+        html += '<table style="margin-bottom:16px"><tr><th>Series Name</th><th>Prefix</th><th>Actions</th></tr>';
+        if (!series.length) html += '<tr><td colspan="3" style="text-align:center;color:#888">No series</td></tr>';
+        else series.forEach(s => {
+            const sid = s.SeriesID || '';
+            html += `<tr><td>${s.SeriesName || ''}</td><td>${s.Prefix || ''}</td>
+                <td class="btn-group">
+                    <button class="btn btn-sm btn-primary" onclick="editSeries('${sid}')">Edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteSeries('${sid}')">Delete</button>
+                </td></tr>`;
+        });
+        html += '</table>';
+
+        // Branch agents section
+        if (seriesBranchFilter) {
+            const branchAgents = agents.filter(a => (a.Branch || '').toLowerCase() === seriesBranchFilter.toLowerCase());
+            html += `<h4 style="margin-bottom:8px">Agents in ${seriesBranchFilter}</h4>`;
+
+            if (!branchAgents.length) {
+                html += '<div class="card" style="text-align:center;color:#888;padding:20px">No agents in this branch.</div>';
+            } else {
+                html += '<table><tr><th>Agent</th><th>Series</th><th>Beginning</th><th>Ending</th></tr>';
+                branchAgents.forEach(a => {
+                    const aid = a.AgentID || '';
+                    const existing = agentSeries.find(x => x.AgentID === aid);
+                    const currentSeries = existing ? existing.SeriesID : (series.length > 0 ? series[0].SeriesID : '');
+                    const beginVal = existing ? (existing.SeriesBeginning || '1') : '1';
+                    const endVal = existing ? (existing.SeriesEnding || '100') : '100';
+
+                    html += `<tr>
+                        <td>${a.Name || aid}</td>
+                        <td>
+                            <select id="as_${aid}_series" style="padding:4px;border:1px solid #ddd;border-radius:4px">
+                                ${series.map(s => `<option value="${s.SeriesID}" ${s.SeriesID === currentSeries ? 'selected' : ''}>${s.SeriesName} (${s.Prefix})</option>`).join('')}
+                            </select>
+                        </td>
+                        <td><input type="number" id="as_${aid}_begin" value="${beginVal}" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px"></td>
+                        <td><input type="number" id="as_${aid}_end" value="${endVal}" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px"></td>
+                    </tr>`;
+                });
+                html += `</table>
+                <div style="margin-top:12px">
+                    <button class="btn btn-success" onclick="applyAgentSeries('${seriesBranchFilter}')">✅ Apply Series to All Agents</button>
+                </div>`;
+            }
         }
+
         el.innerHTML = html;
     }).catch(() => el.innerHTML = '<div class="spinner" style="color:#E84C4C">Failed</div>');
+}
+
+function applyAgentSeries(branch) {
+    api('list', { sheet: 'Agents' }).then(ag => {
+        const agents = (ag.data || []).filter(a => (a.Branch || '').toLowerCase() === branch.toLowerCase());
+        let done = 0;
+
+        agents.forEach(a => {
+            const aid = a.AgentID || '';
+            const seriesId = document.getElementById(`as_${aid}_series`)?.value || '';
+            const begin = document.getElementById(`as_${aid}_begin`)?.value || '1';
+            const end = document.getElementById(`as_${aid}_end`)?.value || '100';
+
+            // Delete old entry for this agent
+            api('delete', { sheet: 'AgentSeries', idColumn: 'AgentID', idValue: aid }).then(() => {
+                setTimeout(() => {
+                    api('create', { sheet: 'AgentSeries', AgentID: aid, Branch: branch, SeriesID: seriesId, SeriesBeginning: begin, SeriesEnding: end }).then(() => {
+                        done++;
+                        if (done === agents.length) {
+                            alert(`✅ Series applied to ${done} agent(s)`);
+                            loadSeries();
+                        }
+                    });
+                }, 300);
+            });
+        });
+
+        if (!agents.length) alert('No agents in this branch');
+    });
 }
 
 function showAddSeries() {
@@ -1142,35 +1206,20 @@ function showAddSeries() {
         <h3>Add Series</h3>
         <input type="text" id="seriesName" placeholder="Series Name (e.g. Default)">
         <input type="text" id="seriesPrefix" placeholder="Prefix (e.g. ORD-)">
-        <input type="number" id="seriesStart" placeholder="Starting Number (e.g. 1)" value="1">
-        <p style="font-size:12px;color:#888;margin-bottom:8px">Example output: <span id="seriesPreview">ORD-1</span></p>
+        <p style="font-size:12px;color:#888;margin-bottom:8px">Series define the format of order numbers.</p>
         <div class="modal-actions">
             <button class="btn" onclick="closeModal()">Cancel</button>
             <button class="btn btn-success" onclick="saveSeries()">Save</button>
         </div>
     `);
-    setTimeout(() => {
-        ['seriesName','seriesPrefix','seriesStart'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.oninput = updateSeriesPreview;
-        });
-        updateSeriesPreview();
-    }, 100);
-}
-
-function updateSeriesPreview() {
-    const prefix = document.getElementById('seriesPrefix')?.value || '';
-    const start = document.getElementById('seriesStart')?.value || '1';
-    document.getElementById('seriesPreview').textContent = prefix + start;
 }
 
 function saveSeries() {
     const name = document.getElementById('seriesName').value.trim();
     const prefix = document.getElementById('seriesPrefix').value.trim();
-    const start = document.getElementById('seriesStart').value.trim();
-    if (!name || !prefix || !start) { alert('All fields required'); return; }
+    if (!name || !prefix) { alert('Name and prefix required'); return; }
     const sid = 'SERIES_' + Date.now();
-    api('create', { sheet: 'Series', SeriesID: sid, SeriesName: name, Prefix: prefix, CurrentNumber: start }).then(r => {
+    api('create', { sheet: 'Series', SeriesID: sid, SeriesName: name, Prefix: prefix }).then(r => {
         if (r.success) { closeModal(); loadSeries(); }
         else alert(r.error || 'Failed');
     });
@@ -1184,51 +1233,23 @@ function editSeries(sid) {
             <h3>Edit Series</h3>
             <input type="text" id="seriesName" value="${s.SeriesName || ''}" placeholder="Series Name">
             <input type="text" id="seriesPrefix" value="${s.Prefix || ''}" placeholder="Prefix">
-            <input type="number" id="seriesStart" value="${s.CurrentNumber || '1'}" placeholder="Current Number">
-            <p style="font-size:12px;color:#888;margin-bottom:8px">Next output: <span id="seriesPreview">${s.Prefix || ''}${(parseInt(s.CurrentNumber || '1') + 1)}</span></p>
             <div class="modal-actions">
                 <button class="btn" onclick="closeModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="updateSeries('${sid}')">Update</button>
             </div>
         `);
-        setTimeout(() => {
-            ['seriesName','seriesPrefix','seriesStart'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.oninput = () => {
-                    const p = document.getElementById('seriesPrefix')?.value || '';
-                    const n = document.getElementById('seriesStart')?.value || '1';
-                    document.getElementById('seriesPreview').textContent = p + (parseInt(n) + 1);
-                };
-            });
-        }, 100);
     });
 }
 
 function updateSeries(sid) {
     const name = document.getElementById('seriesName').value.trim();
     const prefix = document.getElementById('seriesPrefix').value.trim();
-    const curr = document.getElementById('seriesStart').value.trim();
-    if (!name || !prefix || !curr) { alert('All fields required'); return; }
+    if (!name || !prefix) { alert('All fields required'); return; }
     api('delete', { sheet: 'Series', idColumn: 'SeriesID', idValue: sid }).then(() => {
         setTimeout(() => {
-            api('create', { sheet: 'Series', SeriesID: sid, SeriesName: name, Prefix: prefix, CurrentNumber: curr }).then(r => {
+            api('create', { sheet: 'Series', SeriesID: sid, SeriesName: name, Prefix: prefix }).then(r => {
                 if (r.success) { closeModal(); loadSeries(); }
                 else alert(r.error || 'Failed');
-            });
-        }, 1000);
-    });
-}
-
-function resetSeries(sid) {
-    if (!confirm('Reset this series to 1?')) return;
-    api('delete', { sheet: 'Series', idColumn: 'SeriesID', idValue: sid }).then(() => {
-        setTimeout(() => {
-            api('list', { sheet: 'Series' }).then(r => {
-                const s = (r.data || []).find(x => x.SeriesID === sid);
-                const prefix = s ? s.Prefix || '' : '';
-                api('create', { sheet: 'Series', SeriesID: sid, SeriesName: s ? s.SeriesName || '' : '', Prefix: prefix, CurrentNumber: '1' }).then(r2 => {
-                    if (r2.success) loadSeries();
-                });
             });
         }, 1000);
     });
