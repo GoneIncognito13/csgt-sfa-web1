@@ -1159,17 +1159,32 @@ function loadSeries() {
                         </td>
                         <td><input type="number" id="as_${aid}_begin" value="${beginVal}" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px"></td>
                         <td><input type="number" id="as_${aid}_end" value="${endVal}" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px"></td>
+                        <td><button class="btn btn-sm btn-success" onclick="applySingleAgent('${aid}','${seriesBranchFilter}')">✅ Apply</button></td>
                     </tr>`;
                 });
-                html += `</table>
-                <div style="margin-top:12px">
-                    <button class="btn btn-success" onclick="applyAgentSeries('${seriesBranchFilter}')">✅ Apply Series to All Agents</button>
-                </div>`;
+                html += `</table>`;
             }
         }
 
         el.innerHTML = html;
     }).catch(() => el.innerHTML = '<div class="spinner" style="color:#E84C4C">Failed</div>');
+}
+
+function applySingleAgent(aid, branch) {
+    const seriesId = document.getElementById(`as_${aid}_series`)?.value || '';
+    const begin = document.getElementById(`as_${aid}_begin`)?.value || '1';
+    const end = document.getElementById(`as_${aid}_end`)?.value || '100';
+    if (!seriesId) { alert('Select a series'); return; }
+    if (parseInt(begin) > parseInt(end)) { alert('Beginning cannot be greater than ending'); return; }
+
+    api('delete', { sheet: 'AgentSeries', idColumn: 'AgentID', idValue: aid }).then(() => {
+        setTimeout(() => {
+            api('create', { sheet: 'AgentSeries', AgentID: aid, Branch: branch, SeriesID: seriesId, SeriesBeginning: begin, SeriesEnding: end }).then(r => {
+                if (r.success) { alert('✅ Applied'); loadSeries(); }
+                else alert(r.error || 'Failed');
+            });
+        }, 500);
+    });
 }
 
 function applyAgentSeries(branch) {
@@ -1205,8 +1220,8 @@ function showAddSeries() {
     showModal(`
         <h3>Add Series</h3>
         <input type="text" id="seriesName" placeholder="Series Name (e.g. Default)">
-        <input type="text" id="seriesPrefix" placeholder="Prefix (e.g. ORD-)">
-        <p style="font-size:12px;color:#888;margin-bottom:8px">Series define the format of order numbers.</p>
+        <input type="text" id="seriesPrefix" placeholder="Prefix (max 8 chars)" maxlength="8">
+        <p style="font-size:12px;color:#888;margin-bottom:8px">Maximum 8 characters for the prefix.</p>
         <div class="modal-actions">
             <button class="btn" onclick="closeModal()">Cancel</button>
             <button class="btn btn-success" onclick="saveSeries()">Save</button>
@@ -1232,7 +1247,7 @@ function editSeries(sid) {
         showModal(`
             <h3>Edit Series</h3>
             <input type="text" id="seriesName" value="${s.SeriesName || ''}" placeholder="Series Name">
-            <input type="text" id="seriesPrefix" value="${s.Prefix || ''}" placeholder="Prefix">
+            <input type="text" id="seriesPrefix" value="${s.Prefix || ''}" placeholder="Prefix (max 8 chars)" maxlength="8">
             <div class="modal-actions">
                 <button class="btn" onclick="closeModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="updateSeries('${sid}')">Update</button>
