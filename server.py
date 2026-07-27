@@ -260,6 +260,42 @@ def api_process_order():
     
     return json.dumps({'success': True, 'message': f'Order {order_id} processed'})
 
+@app.route('/api/next-order-number')
+def api_next_order_number():
+    agent_id = request.args.get('agentId', '')
+    if not agent_id: return json.dumps({'success': False, 'error': 'No agentId'}), 400
+    try:
+        # Get agent's series assignment
+        as_data = gas_request({'key': API_KEY, 'action': 'list', 'sheet': 'AgentSeries'})
+        as_list = as_data.get('data', [])
+        assignment = next((a for a in as_list if a.get('AgentID', '') == agent_id), None)
+        if not assignment:
+            return json.dumps({'success': False, 'error': 'No series assigned to this agent'}), 400
+        
+        series_id = assignment.get('SeriesID', '')
+        begin = int(assignment.get('SeriesBeginning', '1'))
+        end = int(assignment.get('SeriesEnding', '100'))
+        
+        # Get series prefix
+        s_data = gas_request({'key': API_KEY, 'action': 'list', 'sheet': 'Series'})
+        s_list = s_data.get('data', [])
+        series = next((s for s in s_list if s.get('SeriesID', '') == series_id), None)
+        prefix = series.get('Prefix', 'ORD-') if series else 'ORD-'
+        
+        # Count existing orders for this agent
+        o_data = gas_request({'key': API_KEY, 'action': 'list', 'sheet': 'Orders'})
+        o_list = o_data.get('data', [])
+        agent_orders = [o for o in o_list if o.get('AgentID', '') == agent_id]
+        
+        next_num = begin + len(agent_orders)
+        if next_num > end:
+            return json.dumps({'success': False, 'error': 'Series range exhausted'}), 400
+        
+        order_id = f"{prefix}{next_num}"
+        return json.dumps({'success': True, 'orderId': order_id, 'number': next_num, 'prefix': prefix})
+    except Exception as e:
+        return json.dumps({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/cleanup')
 def api_cleanup():
     count = cleanup_old_selfies()
