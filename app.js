@@ -1142,21 +1142,21 @@ function loadSeries() {
             if (!branchAgents.length) {
                 html += '<div class="card" style="text-align:center;color:#888;padding:20px">No agents in this branch.</div>';
             } else {
-                html += '<table><tr><th>Agent</th><th>Series</th><th>Beginning</th><th>Ending</th></tr>';
+                html += '<table><tr><th>Agent</th><th>Series Prefix</th><th>Beginning</th><th>Ending</th><th>Actions</th></tr>';
                 branchAgents.forEach(a => {
                     const aid = a.AgentID || '';
                     const existing = agentSeries.find(x => x.AgentID === aid);
-                    const currentSeries = existing ? existing.SeriesID : (series.length > 0 ? series[0].SeriesID : '');
+                    const existingSeries = series.find(s => s.SeriesID === (existing ? existing.SeriesID : ''));
+                    const prefixDisplay = existingSeries ? existingSeries.Prefix : (series.length > 0 ? series[0].Prefix : 'ORD-');
+                    const currentSeriesId = existing ? existing.SeriesID : (series.length > 0 ? series[0].SeriesID : '');
                     const beginVal = existing ? (existing.SeriesBeginning || '1') : '1';
                     const endVal = existing ? (existing.SeriesEnding || '100') : '100';
 
                     html += `<tr>
                         <td>${a.Name || aid}</td>
-                        <td>
-                            <select id="as_${aid}_series" style="padding:4px;border:1px solid #ddd;border-radius:4px">
-                                ${series.map(s => `<option value="${s.SeriesID}" ${s.SeriesID === currentSeries ? 'selected' : ''}>${s.SeriesName} (${s.Prefix})</option>`).join('')}
-                            </select>
-                        </td>
+                        <td><select id="as_${aid}_series" style="padding:4px;border:1px solid #ddd;border-radius:4px">
+                            ${series.map(s => `<option value="${s.SeriesID}" ${s.SeriesID === currentSeriesId ? 'selected' : ''}>${s.Prefix}</option>`).join('')}
+                        </select></td>
                         <td><input type="number" id="as_${aid}_begin" value="${beginVal}" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px"></td>
                         <td><input type="number" id="as_${aid}_end" value="${endVal}" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px"></td>
                         <td><button class="btn btn-sm btn-success" onclick="applySingleAgent('${aid}','${seriesBranchFilter}')">✅ Apply</button></td>
