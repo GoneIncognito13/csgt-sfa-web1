@@ -276,11 +276,16 @@ def api_next_order_number():
         begin = int(assignment.get('SeriesBeginning', '1'))
         end = int(assignment.get('SeriesEnding', '100'))
         
-        # Get series prefix
-        s_data = gas_request({'key': API_KEY, 'action': 'list', 'sheet': 'Series'})
-        s_list = s_data.get('data', [])
-        series = next((s for s in s_list if s.get('SeriesID', '') == series_id), None)
-        prefix = series.get('Prefix', 'ORD-') if series else 'ORD-'
+        # Get series prefix (try Series sheet first, fallback to ORD-)
+        prefix = 'ORD-'
+        try:
+            s_data = gas_request({'key': API_KEY, 'action': 'list', 'sheet': 'Series'})
+            s_list = s_data.get('data', [])
+            series = next((s for s in s_list if s.get('SeriesID', '') == series_id), None)
+            if series and series.get('Prefix'):
+                prefix = series['Prefix']
+        except:
+            pass
         
         # Count existing orders for this agent
         o_data = gas_request({'key': API_KEY, 'action': 'list', 'sheet': 'Orders'})
