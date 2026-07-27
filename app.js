@@ -1101,11 +1101,18 @@ let seriesBranchFilter = '';
 function loadSeries() {
     const el = document.getElementById('tab-series');
     el.innerHTML = '<div class="spinner">Loading...</div>';
-    Promise.all([api('list', { sheet: 'Series' }), api('list', { sheet: 'Branches' }), api('list', { sheet: 'Agents' }), api('list', { sheet: 'AgentSeries' })]).then(([sr, br, ag, asr]) => {
+    Promise.all([api('list', { sheet: 'Series' }), api('list', { sheet: 'Branches' }), api('list', { sheet: 'Agents' }), api('list', { sheet: 'Extrucks' }), api('list', { sheet: 'AgentSeries' })]).then(([sr, br, ag, ex, asr]) => {
         const series = sr.data || [];
         const branches = br.data || [];
         const agents = ag.data || [];
+        const extrucks = ex.data || [];
         const agentSeries = asr.data || [];
+        // Merge extruck agents into the agents list
+        extrucks.forEach(e => {
+            if (!agents.find(a => a.AgentID === e.AgentID)) {
+                agents.push({ AgentID: e.AgentID || '', Name: e.TruckName || e.AgentID || '', Branch: e.Branch || '' });
+            }
+        });
 
         let html = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
